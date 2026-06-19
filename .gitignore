@@ -1,0 +1,27 @@
+# Dependency directories
+node_modules/
+
+# Environment files (containing keys)
+.env
+.env.local
+.env.*.local
+client/.env
+server/.env
+
+# Build outputs
+dist/
+build/
+client/dist/
+
+# SQLite databases
+*.sqlite
+database/*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS/Editor files
+.DS_Store
+.vscode/
+.idea/
