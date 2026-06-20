@@ -38,7 +38,25 @@ export const authenticateJWT = async (req, res, next) => {
             await dbRun('UPDATE users SET clerk_id = ? WHERE id = ?', [clerkUserId, user.id]);
             user.clerk_id = clerkUserId;
           } else {
-            const role = clerkUser.publicMetadata?.role || 'student';
+            // Role Whitelist:
+            // srujanhariwal464@gmail.com → admin OR librarian (chosen by user via role picker)
+            // srujanhariwal18@gmail.com  → teacher
+            // everyone else              → student
+            const ADMIN_LIBRARIAN_EMAIL = 'srujanhariwal464@gmail.com';
+            const TEACHER_EMAIL = 'srujanhariwal18@gmail.com';
+
+            let role = 'student';
+            const lowerEmail = (email || '').toLowerCase();
+
+            if (lowerEmail === ADMIN_LIBRARIAN_EMAIL) {
+              // Role is chosen by the user in the frontend RolePicker.
+              // Fall back to 'admin' if somehow this path is hit without a pick.
+              const pickedRole = clerkUser.publicMetadata?.role || clerkUser.unsafeMetadata?.role || '';
+              role = ['admin', 'librarian'].includes(pickedRole) ? pickedRole : 'admin';
+            } else if (lowerEmail === TEACHER_EMAIL) {
+              role = 'teacher';
+            }
+
             const { id } = await dbRun(
               'INSERT INTO users (name, email, role, status, clerk_id) VALUES (?, ?, ?, ?, ?)',
               [name, email, role, 'active', clerkUserId]

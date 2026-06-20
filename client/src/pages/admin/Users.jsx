@@ -172,6 +172,12 @@ const AdminUsers = () => {
                         {u.role}
                       </span>
                     );
+                  } else if (u.role === 'teacher') {
+                    roleBadge = (
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400">
+                        {u.role}
+                      </span>
+                    );
                   }
 
                   const isActive = u.status === 'active';
@@ -288,6 +294,7 @@ const AdminUsers = () => {
                     className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-primary-500"
                   >
                     <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
                     <option value="librarian">Librarian</option>
                     <option value="admin">System Admin</option>
                   </select>

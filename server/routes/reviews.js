@@ -11,8 +11,8 @@ router.post('/books/:bookId/review', authenticateJWT, async (req, res) => {
   const { rating, comment } = req.body;
   const userId = req.user.id;
 
-  if (req.user.role !== 'student') {
-    return res.status(403).json({ message: 'Only students can rate and review books' });
+  if (req.user.role !== 'student' && req.user.role !== 'teacher') {
+    return res.status(403).json({ message: 'Only students and teachers can rate and review books' });
   }
 
   const numericRating = parseInt(rating);
@@ -60,8 +60,8 @@ router.post('/wishlist/toggle', authenticateJWT, async (req, res) => {
   const { bookId } = req.body;
   const userId = req.user.id;
 
-  if (req.user.role !== 'student') {
-    return res.status(403).json({ message: 'Only students can have wishlists' });
+  if (req.user.role !== 'student' && req.user.role !== 'teacher') {
+    return res.status(403).json({ message: 'Only students and teachers can have wishlists' });
   }
 
   if (!bookId) {
@@ -97,8 +97,8 @@ router.post('/wishlist/toggle', authenticateJWT, async (req, res) => {
 router.get('/wishlist', authenticateJWT, async (req, res) => {
   const userId = req.user.id;
 
-  if (req.user.role !== 'student') {
-    return res.status(403).json({ message: 'Only students can view wishlists' });
+  if (req.user.role !== 'student' && req.user.role !== 'teacher') {
+    return res.status(403).json({ message: 'Only students and teachers can view wishlists' });
   }
 
   try {

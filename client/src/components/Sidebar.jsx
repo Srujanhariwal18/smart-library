@@ -6,9 +6,10 @@ import {
   Settings, Users, BarChart3, ShieldAlert,
   FolderOpen, Bookmark, LogOut, ShieldCheck
 } from 'lucide-react';
+import { UserButton } from '@clerk/clerk-react';
 
 const Sidebar = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isClerk } = useAuth();
   const location = useLocation();
 
   if (!user) return null;
@@ -37,9 +38,13 @@ const Sidebar = () => {
 
       {/* Role Badge and User Profile Summary */}
       <div className="p-4 mx-4 my-3 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-800/50 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 font-bold text-lg flex items-center justify-center">
-          {user.name.charAt(0).toUpperCase()}
-        </div>
+        {isClerk ? (
+          <UserButton afterSignOutUrl="/login" />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 font-bold text-lg flex items-center justify-center shrink-0">
+            {user.name.charAt(0).toUpperCase()}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold truncate text-slate-800 dark:text-slate-200">{user.name}</h3>
           <span className="inline-block mt-0.5 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-950/50 dark:text-primary-400">
@@ -50,8 +55,8 @@ const Sidebar = () => {
 
       {/* Nav Links */}
       <nav className="flex-1 px-4 py-3 space-y-1.5 overflow-y-auto">
-        {/* STUDENT VIEWS */}
-        {user.role === 'student' && (
+        {/* STUDENT/TEACHER VIEWS */}
+        {(user.role === 'student' || user.role === 'teacher') && (
           <>
             <Link to="/" className={linkClass('/')}>
               <BookOpen size={18} />
@@ -119,6 +124,11 @@ const Sidebar = () => {
             </Link>
           </>
         )}
+        {/* Shared Profile Link */}
+        <Link to="/profile" className={linkClass('/profile')}>
+          <Settings size={18} />
+          <span>My Profile</span>
+        </Link>
       </nav>
 
       {/* Logout button */}

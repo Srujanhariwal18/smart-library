@@ -1,7 +1,13 @@
 import { supabase } from './supabase.js';
 
 const BASE_URL = 'http://localhost:5000/api';
-const isSupabaseEnabled = !!import.meta.env.VITE_SUPABASE_URL;
+
+// When Clerk is enabled, we use our own Express API (which talks to SQLite).
+// When neither Clerk nor Supabase is configured, we also use Express API (mock mode).
+// Only use the Supabase client layer when Supabase URL is set but Clerk is NOT set.
+const isClerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const isSupabaseEnabled = !!import.meta.env.VITE_SUPABASE_URL && !isClerkEnabled;
+
 
 let tokenResolver = () => localStorage.getItem('lib_token');
 let currentUser = null;
@@ -211,7 +217,7 @@ export const apiGet = async (endpoint) => {
         books (title, cover_image),
         users (name, email)
       `);
-      if (currentUser.role === 'student') {
+      if (currentUser.role === 'student' || currentUser.role === 'teacher') {
         query = query.eq('user_id', currentUser.id);
       }
       const { data: reservations } = await query.order('reservation_date', { ascending: false });
@@ -231,7 +237,7 @@ export const apiGet = async (endpoint) => {
         books (title, cover_image),
         users (name, email)
       `);
-      if (currentUser.role === 'student') {
+      if (currentUser.role === 'student' || currentUser.role === 'teacher') {
         query = query.eq('user_id', currentUser.id);
       }
       const { data: history } = await query.order('borrow_date', { ascending: false });
@@ -536,7 +542,7 @@ export const apiPost = async (endpoint, body) => {
       const { email, bookId } = body;
       const { data: user } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
       if (!user) throw new Error('User with this email not found');
-      if (user.role !== 'student') throw new Error('Books can only be issued to students');
+      if (user.role !== 'student' && user.role !== 'teacher') throw new Error('Books can only be issued to students/teachers');
       if (user.status === 'suspended') throw new Error('Cannot issue books to a suspended user');
 
       const { data: book } = await supabase.from('books').select('*').eq('id', bookId).single();
@@ -605,6 +611,222 @@ export const apiPost = async (endpoint, body) => {
       });
 
       return { message: 'Book renewed successfully', newDueDate: newDueDate.toISOString() };
+    }
+
+    if (endpoint === '/borrows/request-borrow') {
+      const { bookId } = body;
+      const { data: book } = await supabase.from('books').select('*').eq('id', bookId).single();
+      if (!book) throw new Error('Book not found');
+      if (book.available_copies <= 0) throw new Error('No available copies of this book');
+
+      // Check existing active or pending
+      const { data: existing } = await supabase.from('borrows')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('book_id', bookId)
+        .in('status', ['pending_borrow', 'borrowed', 'overdue', 'pending_return', 'pending_renewal'])
+        .maybeSingle();
+
+      if (existing) throw new Error('You already have an active checkout or pending request for this book.');
+
+      await supabase.from('borrows').insert({
+        user_id: currentUser.id,
+        book_id: bookId,
+        due_date: new Date().toISOString(), // placeholder
+        status: 'pending_borrow',
+        fine_amount: 0,
+        renewal_count: 0
+      });
+
+      await supabase.from('notifications').insert({
+        user_id: currentUser.id,
+        message: `Your request to borrow "${book.title}" has been submitted for librarian approval.`
+      });
+
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser.id,
+        action: 'REQUEST_BORROW',
+        details: `Requested to borrow book "${book.title}" (ID: ${bookId})`
+      });
+
+      return { message: 'Borrow request submitted successfully' };
+    }
+
+    if (endpoint.startsWith('/borrows/request-renewal/')) {
+      const parts = endpoint.split('/');
+      const borrowId = parseInt(parts[3]);
+      const { data: borrow } = await supabase.from('borrows').select('*, books(title)').eq('id', borrowId).single();
+      if (!borrow) throw new Error('Active borrow record not found');
+
+      if (borrow.renewal_count >= 2) {
+        throw new Error('Renewal limit of 2 reached.');
+      }
+
+      await supabase.from('borrows').update({ status: 'pending_renewal' }).eq('id', borrowId);
+
+      await supabase.from('notifications').insert({
+        user_id: currentUser.id,
+        message: `Your renewal request for "${borrow.books?.title}" has been submitted for librarian approval.`
+      });
+
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser.id,
+        action: 'REQUEST_RENEWAL',
+        details: `Requested renewal for book "${borrow.books?.title}" (Borrow ID: ${borrowId})`
+      });
+
+      return { message: 'Renewal request submitted successfully' };
+    }
+
+    if (endpoint.startsWith('/borrows/request-return/')) {
+      const parts = endpoint.split('/');
+      const borrowId = parseInt(parts[3]);
+      const { data: borrow } = await supabase.from('borrows').select('*, books(title)').eq('id', borrowId).single();
+      if (!borrow) throw new Error('Active borrow record not found');
+
+      await supabase.from('borrows').update({ status: 'pending_return' }).eq('id', borrowId);
+
+      await supabase.from('notifications').insert({
+        user_id: currentUser.id,
+        message: `Your return request for "${borrow.books?.title}" has been submitted for librarian verification.`
+      });
+
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser.id,
+        action: 'REQUEST_RETURN',
+        details: `Requested return for book "${borrow.books?.title}" (Borrow ID: ${borrowId})`
+      });
+
+      return { message: 'Return request submitted successfully' };
+    }
+
+    if (endpoint.startsWith('/borrows/approve/')) {
+      const parts = endpoint.split('/');
+      const borrowId = parseInt(parts[3]);
+      const { data: borrow } = await supabase.from('borrows').select('*, books(*)').eq('id', borrowId).single();
+      if (!borrow) throw new Error('Request record not found');
+
+      if (borrow.status === 'pending_borrow') {
+        if (borrow.books.available_copies <= 0) throw new Error('No copies available to issue');
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 14);
+
+        await supabase.from('borrows').update({
+          status: 'borrowed',
+          borrow_date: new Date().toISOString(),
+          due_date: dueDate.toISOString()
+        }).eq('id', borrowId);
+
+        await supabase.from('books').update({ available_copies: borrow.books.available_copies - 1 }).eq('id', borrow.book_id);
+
+        await supabase.from('notifications').insert({
+          user_id: borrow.user_id,
+          message: `Your request to borrow "${borrow.books.title}" has been approved! Due date: ${dueDate.toLocaleDateString()}.`
+        });
+
+        await supabase.from('user_activity_logs').insert({
+          user_id: currentUser.id,
+          action: 'APPROVE_BORROW',
+          details: `Approved borrow request for "${borrow.books.title}" (User ID: ${borrow.user_id})`
+        });
+
+        return { message: 'Borrow request approved successfully' };
+      }
+
+      if (borrow.status === 'pending_return') {
+        const now = new Date();
+        const dueDate = new Date(borrow.due_date);
+        let fineAmount = 0.0;
+        if (now > dueDate) {
+          const diffTime = Math.abs(now - dueDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          fineAmount = diffDays * 5.0;
+        }
+
+        await supabase.from('borrows').update({
+          status: 'returned',
+          return_date: now.toISOString(),
+          fine_amount: fineAmount
+        }).eq('id', borrowId);
+
+        await supabase.from('books').update({ available_copies: borrow.books.available_copies + 1 }).eq('id', borrow.book_id);
+
+        await supabase.from('notifications').insert({
+          user_id: borrow.user_id,
+          message: `Your return for "${borrow.books.title}" has been approved. Overdue fine: $${fineAmount.toFixed(2)}`
+        });
+
+        await supabase.from('user_activity_logs').insert({
+          user_id: currentUser.id,
+          action: 'APPROVE_RETURN',
+          details: `Approved return for "${borrow.books.title}". Fine: $${fineAmount}`
+        });
+
+        return { message: 'Return request approved successfully', fineAmount };
+      }
+
+      if (borrow.status === 'pending_renewal') {
+        const newDueDate = new Date(borrow.due_date);
+        newDueDate.setDate(newDueDate.getDate() + 14);
+
+        await supabase.from('borrows').update({
+          status: 'borrowed',
+          due_date: newDueDate.toISOString(),
+          renewal_count: borrow.renewal_count + 1
+        }).eq('id', borrowId);
+
+        await supabase.from('notifications').insert({
+          user_id: borrow.user_id,
+          message: `Your renewal request for "${borrow.books.title}" has been approved! New due date: ${newDueDate.toLocaleDateString()}.`
+        });
+
+        await supabase.from('user_activity_logs').insert({
+          user_id: currentUser.id,
+          action: 'APPROVE_RENEWAL',
+          details: `Approved renewal for "${borrow.books.title}"`
+        });
+
+        return { message: 'Renewal request approved successfully', newDueDate: newDueDate.toISOString() };
+      }
+    }
+
+    if (endpoint.startsWith('/borrows/reject/')) {
+      const parts = endpoint.split('/');
+      const borrowId = parseInt(parts[3]);
+      const { data: borrow } = await supabase.from('borrows').select('*, books(title)').eq('id', borrowId).single();
+      if (!borrow) throw new Error('Request record not found');
+
+      if (borrow.status === 'pending_borrow') {
+        await supabase.from('borrows').update({ status: 'rejected' }).eq('id', borrowId);
+        await supabase.from('notifications').insert({
+          user_id: borrow.user_id,
+          message: `Your request to borrow "${borrow.books.title}" has been rejected.`
+        });
+        await supabase.from('user_activity_logs').insert({
+          user_id: currentUser.id,
+          action: 'REJECT_BORROW',
+          details: `Rejected borrow request for "${borrow.books.title}" (User ID: ${borrow.user_id})`
+        });
+        return { message: 'Borrow request rejected successfully' };
+      }
+
+      if (borrow.status === 'pending_return' || borrow.status === 'pending_renewal') {
+        const now = new Date();
+        const dueDate = new Date(borrow.due_date);
+        const targetStatus = now > dueDate ? 'overdue' : 'borrowed';
+
+        await supabase.from('borrows').update({ status: targetStatus }).eq('id', borrowId);
+        await supabase.from('notifications').insert({
+          user_id: borrow.user_id,
+          message: `Your request for "${borrow.books.title}" has been rejected.`
+        });
+        await supabase.from('user_activity_logs').insert({
+          user_id: currentUser.id,
+          action: 'REJECT_REQUEST',
+          details: `Rejected request for "${borrow.books.title}" (User ID: ${borrow.user_id})`
+        });
+        return { message: 'Request rejected successfully' };
+      }
     }
 
     if (endpoint.startsWith('/borrows/return/')) {
@@ -747,6 +969,41 @@ export const apiPut = async (endpoint, body) => {
       const notificationId = parseInt(parts[2]);
       await supabase.from('notifications').update({ is_read: 1 }).eq('id', notificationId).eq('user_id', currentUser.id);
       return { message: 'Notification marked as read' };
+    }
+
+     if (endpoint === '/auth/profile') {
+      const { name, role } = body;
+      let targetRole = currentUser.role;
+      if (role && ['student', 'teacher'].includes(role) && ['student', 'teacher'].includes(currentUser.role)) {
+        targetRole = role;
+      }
+      const updateName = name || currentUser.name;
+      
+      await supabase.from('users').update({
+        name: updateName,
+        role: targetRole
+      }).eq('id', currentUser.id);
+
+      currentUser.name = updateName;
+      currentUser.role = targetRole;
+
+      localStorage.setItem('lib_user', JSON.stringify(currentUser));
+
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser.id,
+        action: 'UPDATE_PROFILE',
+        details: `User updated name to "${updateName}" and role to "${targetRole}"`
+      });
+
+      return {
+        message: 'Profile updated successfully',
+        user: {
+          id: currentUser.id,
+          name: updateName,
+          email: currentUser.email,
+          role: targetRole
+        }
+      };
     }
 
     if (endpoint === '/notifications/read-all') {

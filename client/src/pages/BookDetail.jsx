@@ -22,6 +22,8 @@ const BookDetail = () => {
   const [inWishlist, setInWishlist] = useState(false);
   const [reserving, setReserving] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [borrowStatus, setBorrowStatus] = useState(null);
+  const [borrowRequestLoading, setBorrowRequestLoading] = useState(false);
 
   // Review submission state
   const [rating, setRating] = useState(5);
@@ -34,11 +36,16 @@ const BookDetail = () => {
       setBook(data.book);
       setReviews(data.reviews);
 
-      // If user is student, check if book is in wishlist
-      if (user && user.role === 'student') {
+      // If user is student or teacher, check if book is in wishlist
+      if (user && (user.role === 'student' || user.role === 'teacher')) {
         const wishlist = await apiGet('/wishlist');
         const isSaved = wishlist.some((item) => item.id === data.book.id);
         setInWishlist(isSaved);
+
+        // Fetch borrows history to check borrow/request status of this book
+        const history = await apiGet('/borrows/history');
+        const record = history.find(b => b.book_id === data.book.id && ['pending_borrow', 'borrowed', 'overdue', 'pending_renewal', 'pending_return'].includes(b.status));
+        setBorrowStatus(record ? record.status : null);
       }
     } catch (err) {
       addToast(err.message || 'Failed to load book details', 'error');
@@ -77,6 +84,19 @@ const BookDetail = () => {
       addToast(err.message || 'Reservation failed', 'error');
     } finally {
       setReserving(false);
+    }
+  };
+
+  const handleRequestBorrow = async () => {
+    setBorrowRequestLoading(true);
+    try {
+      const res = await apiPost('/borrows/request-borrow', { bookId: book.id });
+      addToast(res.message, 'success');
+      fetchBookDetails();
+    } catch (err) {
+      addToast(err.message || 'Borrow request failed', 'error');
+    } finally {
+      setBorrowRequestLoading(false);
     }
   };
 
@@ -189,8 +209,8 @@ const BookDetail = () => {
                 {book.category_name || 'General Category'}
               </span>
               
-              {/* Wishlist toggle for students */}
-              {user && user.role === 'student' && (
+              {/* Wishlist toggle for students/teachers */}
+              {user && (user.role === 'student' || user.role === 'teacher') && (
                 <button
                   onClick={handleWishlistToggle}
                   disabled={wishlistLoading}
@@ -259,8 +279,8 @@ const BookDetail = () => {
               </button>
             )}
 
-            {/* Reserve Book (if copies == 0 and user is student) */}
-            {user && user.role === 'student' && !isAvailable && (
+            {/* Reserve Book (if copies == 0 and user is student/teacher) */}
+            {user && (user.role === 'student' || user.role === 'teacher') && !isAvailable && (
               <button
                 onClick={handleReserve}
                 disabled={reserving}
@@ -271,8 +291,47 @@ const BookDetail = () => {
               </button>
             )}
 
-            {/* Availability Indicator */}
-            {isAvailable && (
+            {/* Teacher Online Borrow Actions */}
+            {user && user.role === 'teacher' && isAvailable && (
+              <>
+                {borrowStatus === 'pending_borrow' && (
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed transition-all"
+                  >
+                    <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Pending Borrow Approval</span>
+                  </button>
+                )}
+                {['borrowed', 'overdue', 'pending_renewal', 'pending_return'].includes(borrowStatus) && (
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-750 cursor-not-allowed transition-all"
+                  >
+                    <span>Already Checked Out</span>
+                  </button>
+                )}
+                {!borrowStatus && (
+                  <button
+                    onClick={handleRequestBorrow}
+                    disabled={borrowRequestLoading}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-lg shadow-primary-500/20 disabled:opacity-50 transition-all"
+                  >
+                    {borrowRequestLoading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <>
+                        <Layers size={16} />
+                        <span>Request to Borrow Online</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Availability Indicator for non-Teacher roles */}
+            {isAvailable && (!user || user.role !== 'teacher') && (
               <div className="text-xs font-semibold px-4 py-3 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 rounded-xl flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></div>
                 <span>In Stock: Ask librarian at desk to check out this book</span>
@@ -285,8 +344,8 @@ const BookDetail = () => {
       {/* Reviews & Ratings Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         
-        {/* Review Form (Student only) */}
-        {user && user.role === 'student' && (
+        {/* Review Form (Student/Teacher only) */}
+        {user && (user.role === 'student' || user.role === 'teacher') && (
           <div className="md:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-6 shadow-lg h-fit">
             <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
               <MessageSquare size={18} className="text-primary-500" />
@@ -343,11 +402,11 @@ const BookDetail = () => {
         )}
 
         {/* Reviews List */}
-        <div className={`md:col-span-2 space-y-4 ${user && user.role === 'student' ? '' : 'md:col-span-3'}`}>
+        <div className={`md:col-span-2 space-y-4 ${user && (user.role === 'student' || user.role === 'teacher') ? '' : 'md:col-span-3'}`}>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-6 shadow-lg">
             <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
               <Star size={18} className="text-amber-400" />
-              Student Reviews ({reviews.length})
+              User Reviews ({reviews.length})
             </h3>
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800/80">

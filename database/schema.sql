@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT,
-    role TEXT NOT NULL CHECK(role IN ('student', 'librarian', 'admin')),
+    role TEXT NOT NULL CHECK(role IN ('student', 'teacher', 'librarian', 'admin')),
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended')),
     clerk_id TEXT UNIQUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS borrows (
     borrow_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     due_date DATETIME NOT NULL,
     return_date DATETIME,
-    status TEXT NOT NULL DEFAULT 'borrowed' CHECK(status IN ('borrowed', 'returned', 'overdue')),
+    status TEXT NOT NULL DEFAULT 'borrowed' CHECK(status IN ('pending_borrow', 'borrowed', 'returned', 'overdue', 'pending_return', 'pending_renewal', 'rejected')),
     fine_amount REAL DEFAULT 0.0 CHECK(fine_amount >= 0),
     renewal_count INTEGER DEFAULT 0 CHECK(renewal_count >= 0),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

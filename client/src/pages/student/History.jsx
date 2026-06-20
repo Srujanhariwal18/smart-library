@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost, getCoverUrl } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { History, Calendar, RefreshCw, AlertCircle, BookOpen } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { History, Calendar, RefreshCw, AlertCircle, BookOpen, RotateCcw } from 'lucide-react';
 
 const StudentHistory = () => {
   const [borrows, setBorrows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [renewingId, setRenewingId] = useState(null);
+  const [returningId, setReturningId] = useState(null);
+  const { user } = useAuth();
   const { addToast } = useToast();
 
   const fetchHistory = async () => {
@@ -24,16 +27,29 @@ const StudentHistory = () => {
     fetchHistory();
   }, []);
 
-  const handleRenew = async (borrowId) => {
+  const handleRequestRenewal = async (borrowId) => {
     setRenewingId(borrowId);
     try {
-      const res = await apiPost(`/borrows/renew/${borrowId}`);
+      const res = await apiPost(`/borrows/request-renewal/${borrowId}`);
       addToast(res.message, 'success');
-      fetchHistory(); // Reload history
+      fetchHistory();
     } catch (err) {
-      addToast(err.message || 'Renewal failed', 'error');
+      addToast(err.message || 'Renewal request failed', 'error');
     } finally {
       setRenewingId(null);
+    }
+  };
+
+  const handleRequestReturn = async (borrowId) => {
+    setReturningId(borrowId);
+    try {
+      const res = await apiPost(`/borrows/request-return/${borrowId}`);
+      addToast(res.message, 'success');
+      fetchHistory();
+    } catch (err) {
+      addToast(err.message || 'Return request failed', 'error');
+    } finally {
+      setReturningId(null);
     }
   };
 
@@ -95,9 +111,31 @@ const StudentHistory = () => {
                         Overdue
                       </span>
                     );
+                  } else if (b.status === 'pending_borrow') {
+                    statusBadge = (
+                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 animate-pulse">
+                        Pending Borrow
+                      </span>
+                    );
+                  } else if (b.status === 'pending_renewal') {
+                    statusBadge = (
+                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 animate-pulse">
+                        Pending Renewal
+                      </span>
+                    );
+                  } else if (b.status === 'pending_return') {
+                    statusBadge = (
+                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 animate-pulse">
+                        Pending Return
+                      </span>
+                    );
+                  } else if (b.status === 'rejected') {
+                    statusBadge = (
+                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-slate-100 text-slate-500 dark:bg-slate-900/50 dark:text-slate-500">
+                        Rejected
+                      </span>
+                    );
                   }
-
-                  const isRenewable = b.status === 'borrowed' && b.renewal_count < 2;
 
                   return (
                     <tr key={b.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors">
@@ -119,7 +157,7 @@ const StudentHistory = () => {
                         {new Date(b.borrow_date).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-slate-600 dark:text-slate-400 font-medium">
-                        {new Date(b.due_date).toLocaleDateString()}
+                        {b.status === 'pending_borrow' ? '—' : new Date(b.due_date).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-slate-500">
                         {b.return_date ? new Date(b.return_date).toLocaleDateString() : '—'}
@@ -129,20 +167,41 @@ const StudentHistory = () => {
                         {b.fine_amount > 0 ? `$${b.fine_amount.toFixed(2)}` : '—'}
                       </td>
                       <td className="p-4 text-center">
-                        {isRenewable ? (
-                          <button
-                            onClick={() => handleRenew(b.id)}
-                            disabled={renewingId === b.id}
-                            className="flex items-center gap-1 mx-auto px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 transition"
-                          >
-                            <RefreshCw size={12} className={renewingId === b.id ? 'animate-spin' : ''} />
-                            Renew
-                          </button>
-                        ) : b.status === 'borrowed' && b.renewal_count >= 2 ? (
-                          <span className="text-xs text-rose-500 font-semibold flex items-center gap-1 justify-center">
-                            <AlertCircle size={12} />
-                            Limit reached
-                          </span>
+                        {user && user.role === 'teacher' ? (
+                          <div className="flex flex-col gap-1.5 items-center justify-center">
+                            {['borrowed', 'overdue', 'pending_renewal'].includes(b.status) && (
+                              <button
+                                onClick={() => handleRequestReturn(b.id)}
+                                disabled={returningId === b.id}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 transition w-36 justify-center"
+                              >
+                                <RotateCcw size={12} className={returningId === b.id ? 'animate-spin' : ''} />
+                                Initiate Return
+                              </button>
+                            )}
+
+                            {['borrowed', 'overdue'].includes(b.status) && b.renewal_count < 2 && (
+                              <button
+                                onClick={() => handleRequestRenewal(b.id)}
+                                disabled={renewingId === b.id}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 transition w-36 justify-center"
+                              >
+                                <RefreshCw size={12} className={renewingId === b.id ? 'animate-spin' : ''} />
+                                Request Renewal
+                              </button>
+                            )}
+
+                            {['borrowed', 'overdue'].includes(b.status) && b.renewal_count >= 2 && (
+                              <span className="text-xs text-rose-500 font-semibold flex items-center gap-1 justify-center">
+                                <AlertCircle size={12} />
+                                Max Renewals
+                              </span>
+                            )}
+
+                            {!['borrowed', 'overdue', 'pending_renewal'].includes(b.status) && (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
                         )}

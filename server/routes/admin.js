@@ -94,7 +94,7 @@ router.post('/users', async (req, res) => {
     return res.status(400).json({ message: 'All fields are required' });
   }
 
-  if (!['student', 'librarian', 'admin'].includes(role)) {
+  if (!['student', 'teacher', 'librarian', 'admin'].includes(role)) {
     return res.status(400).json({ message: 'Invalid role type' });
   }
 

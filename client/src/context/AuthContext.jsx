@@ -1,191 +1,221 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth as useClerkAuth, useUser as useClerkUser } from '@clerk/clerk-react';
-import { supabase } from '../utils/supabase.js';
 import { setTokenResolver, setCurrentUser } from '../utils/api.js';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
-export const AuthProvider = ({ children }) => {
-  const isClerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY && !!import.meta.env.VITE_SUPABASE_URL;
+const API_BASE = 'http://localhost:5000/api';
 
-  // Shared state
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ─── API Helpers ─────────────────────────────────────────────────────────────
+async function apiClerkSync(clerkId, email, name, requestedRole = null) {
+  const res = await fetch(`${API_BASE}/auth/clerk-sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clerkId, email, name, requestedRole }),
+  });
+  const data = await res.json();
+  if (!res.ok && res.status !== 202) throw new Error(data.message || 'Sync failed');
+  return { httpStatus: res.status, ...data };
+}
 
-  if (isClerkEnabled) {
-    return (
-      <ClerkAuthProviderWrapper {...{ user, setUser, token, setToken, loading, setLoading }}>
-        {children}
-      </ClerkAuthProviderWrapper>
-    );
-  } else {
-    return (
-      <MockAuthProviderWrapper {...{ user, setUser, token, setToken, loading, setLoading }}>
-        {children}
-      </MockAuthProviderWrapper>
-    );
-  }
-};
+async function apiRolePick(clerkId, email, name, role) {
+  const res = await fetch(`${API_BASE}/auth/clerk-role-pick`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clerkId, email, name, role }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Role pick failed');
+  return data;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
-const ClerkAuthProviderWrapper = ({ user, setUser, token, setToken, loading, setLoading, children }) => {
-  const { isLoaded: isAuthLoaded, isSignedIn, userId, getToken, signOut } = useClerkAuth();
+// ══════════════════════════════════════════════════════════════════
+// CLERK AUTH PROVIDER  (used when VITE_CLERK_PUBLISHABLE_KEY is set)
+// ══════════════════════════════════════════════════════════════════
+export const ClerkAuthProvider = ({ children }) => {
+  const { isLoaded: isAuthLoaded, isSignedIn, signOut } = useClerkAuth();
   const { isLoaded: isUserLoaded, user: clerkUser } = useClerkUser();
 
+  const [user, setUser]                     = useState(null);
+  const [token, setToken]                   = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [pendingRolePick, setPendingRolePick]     = useState(false);
+  const [pendingClerkData, setPendingClerkData]   = useState(null);
+  const [syncError, setSyncError]           = useState(null);
+  const [syncTrigger, setSyncTrigger]       = useState(0);
+
+  const retrySync = useCallback(() => {
+    setSyncTrigger(prev => prev + 1);
+    setLoading(true);
+  }, []);
+
   useEffect(() => {
-    if (!isAuthLoaded || !isUserLoaded) {
-      setLoading(true);
+    if (!isAuthLoaded || !isUserLoaded) { setLoading(true); return; }
+
+    if (!isSignedIn || !clerkUser) {
+      setUser(null); setToken(null); setCurrentUser(null);
+      setPendingRolePick(false); setPendingClerkData(null);
+      localStorage.removeItem('lib_token');
+      localStorage.removeItem('lib_user');
+      setLoading(false);
       return;
     }
 
-    const syncUser = async () => {
+    const email = (clerkUser.emailAddresses[0]?.emailAddress || '').toLowerCase();
+    const name  = (`${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`).trim()
+                  || clerkUser.username
+                  || email.split('@')[0];
+
+    let cancelled = false;
+
+    const sync = async () => {
       try {
-        setTokenResolver(() => getToken({ template: 'supabase' }).catch(() => getToken()));
-        const jwt = await getToken({ template: 'supabase' }).catch(() => null) || await getToken();
-        setToken(jwt);
+        setSyncError(null);
+        const result = await apiClerkSync(clerkUser.id, email, name);
 
-        // Connect Supabase client to Clerk session
-        if (jwt) {
-          await supabase.auth.setSession({
-            access_token: jwt,
-            refresh_token: ''
-          }).catch((err) => console.warn('Supabase session initialization bypassed:', err.message));
+        if (cancelled) return;
+
+        if (result.needsRolePick) {
+          setPendingClerkData({ clerkId: clerkUser.id, email, name });
+          setPendingRolePick(true);
+          setLoading(false);
+          return;
         }
 
-        const email = clerkUser.emailAddresses[0]?.emailAddress;
-        const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || clerkUser.username || 'Clerk User';
-
-        // Try fetching user from Supabase using Clerk ID
-        let { data: dbUser } = await supabase
-          .from('users')
-          .select('*')
-          .eq('clerk_id', clerkUser.id)
-          .maybeSingle();
-
-        if (!dbUser) {
-          // Check by email to see if we should link an existing seeded user
-          const { data: emailUser } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
-
-          if (emailUser) {
-            const { data: updatedUser } = await supabase
-              .from('users')
-              .update({ clerk_id: clerkUser.id })
-              .eq('id', emailUser.id)
-              .select()
-              .single();
-            dbUser = updatedUser;
-          } else {
-            // New user registration. Determine default roles:
-            let role = 'student';
-            if (email === 'admin@library.com') role = 'admin';
-            else if (email === 'librarian@library.com') role = 'librarian';
-
-            const { data: newUser } = await supabase
-              .from('users')
-              .insert({
-                name,
-                email,
-                role,
-                status: 'active',
-                clerk_id: clerkUser.id
-              })
-              .select()
-              .single();
-            dbUser = newUser;
-          }
-        }
-
-        setUser(dbUser);
-        setCurrentUser(dbUser);
+        applySession(result.token, result.user);
       } catch (err) {
-        console.error('Clerk Profile Sync Error:', err);
+        if (!cancelled) {
+          console.error('[Auth] Clerk sync failed:', err.message);
+          setSyncError(err.message);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    if (isSignedIn && clerkUser) {
-      syncUser();
-    } else {
-      setUser(null);
-      setToken(null);
-      setCurrentUser(null);
-      setLoading(false);
+    sync();
+    return () => { cancelled = true; };
+  }, [isAuthLoaded, isUserLoaded, isSignedIn, clerkUser?.id, syncTrigger]);
+
+  const applySession = (tok, usr) => {
+    setToken(tok);
+    setUser(usr);
+    setCurrentUser(usr);
+    setTokenResolver(() => tok);
+    localStorage.setItem('lib_token', tok);
+    localStorage.setItem('lib_user', JSON.stringify(usr));
+  };
+
+  const confirmRolePick = useCallback(async (chosenRole) => {
+    if (!pendingClerkData) return;
+    try {
+      const result = await apiRolePick(
+        pendingClerkData.clerkId,
+        pendingClerkData.email,
+        pendingClerkData.name,
+        chosenRole
+      );
+      applySession(result.token, result.user);
+    } catch (err) {
+      console.error('[Auth] Role pick failed:', err.message);
+    } finally {
+      setPendingRolePick(false);
+      setPendingClerkData(null);
     }
-  }, [isAuthLoaded, isUserLoaded, isSignedIn, clerkUser]);
+  }, [pendingClerkData]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     signOut();
-  };
+    setUser(null); setToken(null); setCurrentUser(null);
+    localStorage.removeItem('lib_token');
+    localStorage.removeItem('lib_user');
+  }, [signOut]);
 
-  const isAuthenticated = () => !!user;
-
-  const hasRole = (roles) => {
-    if (!user) return false;
-    return roles.includes(user.role);
-  };
+  const isAuthenticated = useCallback(() => !!user, [user]);
+  const hasRole = useCallback((roles) => !!user && roles.includes(user.role), [user]);
 
   return (
-    <AuthContext.Provider value={{ token, user, login: () => {}, logout, loading, isAuthenticated, hasRole, isClerk: true }}>
+    <AuthContext.Provider value={{
+      user, token, loading, isClerk: true, syncError,
+      login: () => {},
+      logout, isAuthenticated, hasRole,
+      pendingRolePick, pendingClerkData, confirmRolePick,
+      isSignedIn: !!isSignedIn, retrySync
+    }}>
       {!loading && children}
     </AuthContext.Provider>
   );
 };
 
-const MockAuthProviderWrapper = ({ user, setUser, token, setToken, loading, setLoading, children }) => {
+// ══════════════════════════════════════════════════════════════════
+// MOCK / LOCAL AUTH PROVIDER  (used without Clerk)
+// ══════════════════════════════════════════════════════════════════
+export const MockAuthProvider = ({ children }) => {
+  const [user, setUser]   = useState(null);
+  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const savedToken = localStorage.getItem('lib_token');
-    const savedUser = localStorage.getItem('lib_user');
-
+    const savedUser  = localStorage.getItem('lib_user');
     if (savedToken && savedUser) {
-      setToken(savedToken);
-      const parsedUser = JSON.parse(savedUser);
-      setUser(parsedUser);
-      setCurrentUser(parsedUser);
+      try {
+        const parsed = JSON.parse(savedUser);
+        setToken(savedToken);
+        setUser(parsed);
+        setCurrentUser(parsed);
+      } catch { /* ignore corrupt data */ }
     }
-
     setTokenResolver(() => localStorage.getItem('lib_token'));
     setLoading(false);
   }, []);
 
-  const login = (mockToken, userDetails) => {
-    localStorage.setItem('lib_token', mockToken);
+  const login = useCallback((tok, userDetails) => {
+    localStorage.setItem('lib_token', tok);
     localStorage.setItem('lib_user', JSON.stringify(userDetails));
-    setToken(mockToken);
+    setToken(tok);
     setUser(userDetails);
     setCurrentUser(userDetails);
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('lib_token');
     localStorage.removeItem('lib_user');
-    setToken(null);
-    setUser(null);
-    setCurrentUser(null);
-  };
+    setToken(null); setUser(null); setCurrentUser(null);
+  }, []);
 
-  const isAuthenticated = () => !!user;
-
-  const hasRole = (roles) => {
-    if (!user) return false;
-    return roles.includes(user.role);
-  };
+  const isAuthenticated = useCallback(() => !!user, [user]);
+  const hasRole = useCallback((roles) => !!user && roles.includes(user.role), [user]);
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, loading, isAuthenticated, hasRole, isClerk: false }}>
+    <AuthContext.Provider value={{
+      user, token, loading, isClerk: false,
+      login, logout, isAuthenticated, hasRole,
+      pendingRolePick: false, pendingClerkData: null,
+      confirmRolePick: () => {}, syncError: null,
+      isSignedIn: false, retrySync: () => {}
+    }}>
       {!loading && children}
     </AuthContext.Provider>
   );
 };
 
+// ══════════════════════════════════════════════════════════════════
+// UNIFIED WRAPPER — picks the right provider automatically
+// ══════════════════════════════════════════════════════════════════
+export const AuthProvider = ({ children }) => {
+  const isClerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  return isClerkEnabled
+    ? <ClerkAuthProvider>{children}</ClerkAuthProvider>
+    : <MockAuthProvider>{children}</MockAuthProvider>;
+};
+
+// ══════════════════════════════════════════════════════════════════
+// HOOK
+// ══════════════════════════════════════════════════════════════════
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 };

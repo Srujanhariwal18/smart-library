@@ -5,15 +5,19 @@ import './index.css'
 import App from './App.jsx'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
-// Only wrap with ClerkProvider if both Clerk and Supabase integration parameters are set
-const isClerkSupabaseEnabled = !!PUBLISHABLE_KEY && !!SUPABASE_URL;
+// Only require the Clerk key — Supabase is no longer needed for auth
+const isClerkEnabled = !!PUBLISHABLE_KEY;
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {isClerkSupabaseEnabled ? (
-      <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    {isClerkEnabled ? (
+      <ClerkProvider
+        publishableKey={PUBLISHABLE_KEY}
+        fallbackRedirectUrl="/"
+        signInUrl="/login"
+        signUpUrl="/register"
+      >
         <App />
       </ClerkProvider>
     ) : (

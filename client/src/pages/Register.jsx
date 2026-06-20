@@ -10,6 +10,7 @@ const Register = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState('student');
   const [submitting, setSubmitting] = useState(false);
   const { addToast } = useToast();
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ const Register = () => {
 
     setSubmitting(true);
     try {
-      await apiPost('/auth/register', { name, email, password });
+      await apiPost('/auth/register', { name, email, password, role });
       addToast('Registration successful! Please log in.', 'success');
       navigate('/login');
     } catch (err) {
@@ -53,7 +54,7 @@ const Register = () => {
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-          Create student account
+          Create your account
         </h2>
         {!isClerkEnabled && (
           <p className="mt-2 text-center text-sm text-slate-400">
@@ -104,6 +105,24 @@ const Register = () => {
             </div>
 
             <form className="space-y-5" onSubmit={handleRegister}>
+              <div>
+                <label htmlFor="role" className="block text-sm font-semibold text-slate-300">
+                  I am a
+                </label>
+                <div className="mt-1 relative">
+                  <select
+                    id="role"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition text-white text-sm"
+                  >
+                    <option value="student" className="bg-slate-800 text-white">Student</option>
+                    <option value="teacher" className="bg-slate-800 text-white">Teacher</option>
+                  </select>
+                  <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                </div>
+              </div>
+
               <div>
                 <label htmlFor="name" className="block text-sm font-semibold text-slate-300">
                   Full Name

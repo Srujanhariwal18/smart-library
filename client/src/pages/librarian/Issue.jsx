@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Bookmark, ClipboardList, Send, RotateCcw, AlertCircle, CheckCircle } from 'lucide-react';
+import { Bookmark, ClipboardList, Send, RotateCcw, AlertCircle, CheckCircle, UserCheck, XCircle } from 'lucide-react';
 
 const LibrarianIssue = () => {
-  const [activeTab, setActiveTab] = useState('issue'); // 'issue' or 'history'
+  const [activeTab, setActiveTab] = useState('issue'); // 'issue', 'history', or 'requests'
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [processingId, setProcessingId] = useState(null);
   const { addToast } = useToast();
 
   // Issue Book Form State
@@ -40,10 +43,53 @@ const LibrarianIssue = () => {
     }
   };
 
+  const fetchRequests = async () => {
+    setRequestsLoading(true);
+    try {
+      const data = await apiGet('/borrows/requests');
+      setRequests(data);
+    } catch (err) {
+      addToast(err.message || 'Failed to load requests', 'error');
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchBooks();
     fetchActiveBorrows();
+    fetchRequests();
   }, []);
+
+  const handleApprove = async (id) => {
+    setProcessingId(id);
+    try {
+      const data = await apiPost(`/borrows/approve/${id}`);
+      addToast(data.message || 'Request approved successfully', 'success');
+      fetchRequests();
+      fetchActiveBorrows();
+      fetchBooks();
+    } catch (err) {
+      addToast(err.message || 'Failed to approve request', 'error');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (id) => {
+    setProcessingId(id);
+    try {
+      const data = await apiPost(`/borrows/reject/${id}`);
+      addToast(data.message || 'Request rejected successfully', 'success');
+      fetchRequests();
+      fetchActiveBorrows();
+      fetchBooks();
+    } catch (err) {
+      addToast(err.message || 'Failed to reject request', 'error');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const handleIssueSubmit = async (e) => {
     e.preventDefault();
@@ -125,6 +171,17 @@ const LibrarianIssue = () => {
         >
           <ClipboardList size={16} />
           Check Active Borrows & Returns
+        </button>
+        <button
+          onClick={() => setActiveTab('requests')}
+          className={`flex items-center gap-2 px-6 py-3.5 text-sm font-bold border-b-2 transition-all ${
+            activeTab === 'requests'
+              ? 'border-primary-600 text-primary-650 dark:text-primary-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-white'
+          }`}
+        >
+          <UserCheck size={16} />
+          Teacher Requests
         </button>
       </div>
 
@@ -266,6 +323,93 @@ const LibrarianIssue = () => {
                               Processed
                             </span>
                           )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB CONTENT: TEACHER REQUESTS */}
+      {activeTab === 'requests' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden">
+          <div className="p-4 border-b bg-slate-50/50 dark:bg-slate-850/50 dark:bg-slate-900/50">
+            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Pending Teacher Requests</h3>
+          </div>
+
+          {requestsLoading ? (
+            <div className="min-h-[250px] flex items-center justify-center">
+              <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="text-center py-16 text-slate-400 dark:text-slate-500 text-sm">
+              No pending teacher requests found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 text-xs font-bold uppercase border-b border-slate-200 dark:border-slate-850">
+                    <th className="p-4">Teacher</th>
+                    <th className="p-4">Book Title</th>
+                    <th className="p-4">Request Type</th>
+                    <th className="p-4">Request Date</th>
+                    <th className="p-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
+                  {requests.map((r) => {
+                    let typeBadge = (
+                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/30 dark:text-blue-400">
+                        Borrow Request
+                      </span>
+                    );
+                    if (r.status === 'pending_renewal') {
+                      typeBadge = (
+                        <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                          Renewal Request
+                        </span>
+                      );
+                    } else if (r.status === 'pending_return') {
+                      typeBadge = (
+                        <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950/30 dark:text-purple-400">
+                          Return Request
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <tr key={r.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors">
+                        <td className="p-4">
+                          <p className="font-semibold text-slate-800 dark:text-slate-200">{r.user_name}</p>
+                          <span className="text-xs text-slate-400 font-medium">{r.user_email}</span>
+                        </td>
+                        <td className="p-4 font-semibold text-slate-850 dark:text-slate-200">{r.title}</td>
+                        <td className="p-4">{typeBadge}</td>
+                        <td className="p-4 text-slate-500 font-medium">{new Date(r.borrow_date).toLocaleDateString()}</td>
+                        <td className="p-4 text-center">
+                          <div className="flex gap-2 justify-center">
+                            <button
+                              onClick={() => handleApprove(r.id)}
+                              disabled={processingId === r.id}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition"
+                            >
+                              <UserCheck size={12} />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleReject(r.id)}
+                              disabled={processingId === r.id}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 transition"
+                            >
+                              <XCircle size={12} />
+                              Reject
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

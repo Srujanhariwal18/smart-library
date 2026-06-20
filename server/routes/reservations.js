@@ -10,8 +10,8 @@ router.post('/reserve', authenticateJWT, async (req, res) => {
   const { bookId } = req.body;
   const userId = req.user.id;
 
-  if (req.user.role !== 'student') {
-    return res.status(403).json({ message: 'Only students can reserve books' });
+  if (req.user.role !== 'student' && req.user.role !== 'teacher') {
+    return res.status(403).json({ message: 'Only students and teachers can reserve books' });
   }
 
   if (!bookId) {
@@ -96,7 +96,7 @@ router.post('/cancel/:id', authenticateJWT, async (req, res) => {
     }
 
     // Role check: Student can only cancel their own reservation
-    if (req.user.role === 'student' && reservation.user_id !== req.user.id) {
+    if (['student', 'teacher'].includes(req.user.role) && reservation.user_id !== req.user.id) {
       return res.status(403).json({ message: 'You can only cancel your own reservations' });
     }
 
@@ -139,7 +139,7 @@ router.get('/', authenticateJWT, async (req, res) => {
     `;
     const params = [];
 
-    if (req.user.role === 'student') {
+    if (req.user.role === 'student' || req.user.role === 'teacher') {
       sql += ' WHERE r.user_id = ?';
       params.push(req.user.id);
     }

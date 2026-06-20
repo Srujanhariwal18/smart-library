@@ -99,6 +99,12 @@ const AdminLogs = () => {
                         {log.user_role}
                       </span>
                     );
+                  } else if (log.user_role === 'teacher') {
+                    roleBadge = (
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400">
+                        {log.user_role}
+                      </span>
+                    );
                   } else if (log.user_role === 'librarian') {
                     roleBadge = (
                       <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">

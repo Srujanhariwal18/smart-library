@@ -72,6 +72,7 @@ async function seedData() {
     const adminPasswordHash = await bcrypt.hash('adminpassword', 10);
     const librarianPasswordHash = await bcrypt.hash('librarianpassword', 10);
     const studentPasswordHash = await bcrypt.hash('studentpassword', 10);
+    const teacherPasswordHash = await bcrypt.hash('teacherpassword', 10);
 
     const insertUser = db.prepare(`
       INSERT OR IGNORE INTO users (name, email, password_hash, role, status)
@@ -81,6 +82,7 @@ async function seedData() {
     insertUser.run('System Admin', 'admin@library.com', adminPasswordHash, 'admin', 'active');
     insertUser.run('Jane Doe (Librarian)', 'librarian@library.com', librarianPasswordHash, 'librarian', 'active');
     insertUser.run('John Smith (Student)', 'student@library.com', studentPasswordHash, 'student', 'active');
+    insertUser.run('Jane Smith (Teacher)', 'teacher@library.com', teacherPasswordHash, 'teacher', 'active');
     insertUser.finalize();
     console.log('Seeded users.');
 
