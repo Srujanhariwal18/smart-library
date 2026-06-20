@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js';
 
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = `http://${window.location.hostname}:5000/api`;
 
 // When Clerk is enabled, we use our own Express API (which talks to SQLite).
 // When neither Clerk nor Supabase is configured, we also use Express API (mock mode).

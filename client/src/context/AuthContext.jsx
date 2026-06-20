@@ -4,7 +4,7 @@ import { setTokenResolver, setCurrentUser } from '../utils/api.js';
 
 export const AuthContext = createContext(null);
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = `http://${window.location.hostname}:5000/api`;
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 async function apiClerkSync(clerkId, email, name, requestedRole = null) {
@@ -125,8 +125,12 @@ export const ClerkAuthProvider = ({ children }) => {
     }
   }, [pendingClerkData]);
 
-  const logout = useCallback(() => {
-    signOut();
+  const logout = useCallback(async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('[Auth] Clerk sign out error:', err);
+    }
     setUser(null); setToken(null); setCurrentUser(null);
     localStorage.removeItem('lib_token');
     localStorage.removeItem('lib_user');
