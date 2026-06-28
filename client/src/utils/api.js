@@ -1550,3 +1550,38 @@ export const apiRolePick = async (clerkId, email, name, role, supabaseAccessToke
   }
 };
 
+export const apiSwitchRole = async (newRole, supabaseAccessToken = null) => {
+  if (!isSupabaseEnabled) {
+    const res = await fetch(`${BASE_URL}/auth/switch-role`, {
+      method: 'POST',
+      headers: await getHeaders(),
+      body: JSON.stringify({ role: newRole })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Role switch failed');
+    return data;
+  }
+
+  try {
+    const client = await supabaseClient(supabaseAccessToken);
+    const { error } = await client
+      .from('users')
+      .update({ role: newRole })
+      .eq('id', currentUser.id);
+
+    if (error) throw error;
+    
+    // Log active switch log
+    await client.from('user_activity_logs').insert({
+      user_id: currentUser.id,
+      action: 'SWITCH_ROLE',
+      details: `Switched active role to: ${newRole}`
+    });
+
+    return { role: newRole };
+  } catch (error) {
+    console.error('Supabase switch role error:', error.message);
+    throw error;
+  }
+};
+

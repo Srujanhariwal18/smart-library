@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { 
   BookOpen, History, Heart, Calendar, 
@@ -10,8 +10,9 @@ import {
 import { UserButton } from '@clerk/clerk-react';
 
 const Sidebar = () => {
-  const { user, logout, isClerk } = useAuth();
+  const { user, logout, isClerk, switchRole } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   if (!user) return null;
 
@@ -38,20 +39,36 @@ const Sidebar = () => {
       </div>
 
       {/* Role Badge and User Profile Summary */}
-      <div className="p-4 mx-4 my-3 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-800/50 flex items-center gap-3">
-        {isClerk ? (
-          <UserButton afterSignOutUrl="/login" />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 font-bold text-lg flex items-center justify-center shrink-0">
-            {user.name.charAt(0).toUpperCase()}
+      <div className="p-4 mx-4 my-3 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-800/50 flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          {isClerk ? (
+            <UserButton afterSignOutUrl="/login" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 font-bold text-lg flex items-center justify-center shrink-0">
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold truncate text-slate-800 dark:text-slate-200">{user.name}</h3>
+            <span className="inline-block mt-0.5 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-950/50 dark:text-primary-400">
+              {user.role}
+            </span>
           </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold truncate text-slate-800 dark:text-slate-200">{user.name}</h3>
-          <span className="inline-block mt-0.5 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-950/50 dark:text-primary-400">
-            {user.role}
-          </span>
         </div>
+
+        {/* Role Switcher for Admin Email */}
+        {user.email?.toLowerCase() === 'your_admin_email@gmail.com' && (
+          <button
+            onClick={async () => {
+              const targetRole = user.role === 'admin' ? 'librarian' : 'admin';
+              await switchRole(targetRole);
+              navigate(targetRole === 'admin' ? '/admin/dashboard' : '/librarian/dashboard');
+            }}
+            className="w-full text-center py-1.5 px-3 rounded-lg text-xs font-bold bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-950/50 transition border border-primary-500/10"
+          >
+            {user.role === 'admin' ? 'Switch to Librarian' : 'Switch to Admin'}
+          </button>
+        )}
       </div>
 
       {/* Nav Links */}

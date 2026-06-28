@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth as useClerkAuth, useUser as useClerkUser } from '@clerk/clerk-react';
-import { setTokenResolver, setCurrentUser, apiClerkSync, apiRolePick } from '../utils/api.js';
+import { setTokenResolver, setCurrentUser, apiClerkSync, apiRolePick, apiSwitchRole } from '../utils/api.js';
 
 export const AuthContext = createContext(null);
 
@@ -40,6 +40,15 @@ export const ClerkAuthProvider = ({ children }) => {
     const name  = (`${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`).trim()
                   || clerkUser.username
                   || email.split('@')[0];
+
+    // FIX 2 — Always show the role picker for admin email on every login, not just first time
+    const ADMIN_LIBRARIAN_EMAILS = ['your_admin_email@gmail.com'];
+    if (ADMIN_LIBRARIAN_EMAILS.includes(email) && !user) {
+      setPendingClerkData({ clerkId: clerkUser.id, email, name });
+      setPendingRolePick(true);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -118,6 +127,26 @@ export const ClerkAuthProvider = ({ children }) => {
     }
   }, [pendingClerkData, getToken]);
 
+  const switchRole = useCallback(async (newRole) => {
+    try {
+      setLoading(true);
+      let supabaseToken = null;
+      if (import.meta.env.VITE_SUPABASE_URL) {
+        supabaseToken = await getToken({ template: 'supabase' });
+      }
+      await apiSwitchRole(newRole, supabaseToken);
+      
+      const updatedUser = { ...user, role: newRole };
+      setUser(updatedUser);
+      setCurrentUser(updatedUser);
+      localStorage.setItem('lib_user', JSON.stringify(updatedUser));
+    } catch (err) {
+      console.error('[Auth] Switch role failed:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, getToken]);
+
   const logout = useCallback(async () => {
     try {
       await signOut();
@@ -138,6 +167,7 @@ export const ClerkAuthProvider = ({ children }) => {
       login: () => {},
       logout, isAuthenticated, hasRole,
       pendingRolePick, pendingClerkData, confirmRolePick,
+      switchRole,
       isSignedIn: !!isSignedIn, retrySync
     }}>
       {!loading && children}
@@ -191,6 +221,7 @@ export const MockAuthProvider = ({ children }) => {
       login, logout, isAuthenticated, hasRole,
       pendingRolePick: false, pendingClerkData: null,
       confirmRolePick: () => {}, syncError: null,
+      switchRole: () => {},
       isSignedIn: false, retrySync: () => {}
     }}>
       {!loading && children}

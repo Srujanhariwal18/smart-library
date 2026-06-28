@@ -53,9 +53,10 @@ const ClerkPostLoginRedirect = () => {
   useEffect(() => {
     if (!isClerk || loading || !user) return;
     const role = user.role;
-    if (role === 'admin')     navigate('/admin',           { replace: true });
-    else if (role === 'librarian') navigate('/librarian/books', { replace: true });
-    // students & teachers stay on "/"
+    if (role === 'admin')          navigate('/admin/dashboard',     { replace: true });
+    else if (role === 'librarian') navigate('/librarian/dashboard', { replace: true });
+    else if (role === 'teacher')   navigate('/teacher/dashboard',   { replace: true });
+    else if (role === 'student')   navigate('/student/dashboard',   { replace: true });
   }, [user, loading, isClerk]);
 
   return null;
@@ -83,6 +84,12 @@ function App() {
                 {/* Protected shell routes */}
                 <Route path="/" element={<Layout />}>
                   <Route index element={<Home />} />
+                  <Route path="student/dashboard" element={
+                    <RoleGuard allowedRoles={['student']}><Home /></RoleGuard>
+                  } />
+                  <Route path="teacher/dashboard" element={
+                    <RoleGuard allowedRoles={['teacher']}><Home /></RoleGuard>
+                  } />
                   <Route path="books/:id" element={<BookDetail />} />
 
                   <Route path="profile" element={
@@ -112,6 +119,9 @@ function App() {
                   <Route path="librarian/books" element={
                     <RoleGuard allowedRoles={['librarian']}><LibrarianBooks /></RoleGuard>
                   } />
+                  <Route path="librarian/dashboard" element={
+                    <RoleGuard allowedRoles={['librarian']}><LibrarianBooks /></RoleGuard>
+                  } />
                   <Route path="librarian/issue" element={
                     <RoleGuard allowedRoles={['librarian']}><LibrarianIssue /></RoleGuard>
                   } />
@@ -124,6 +134,9 @@ function App() {
 
                   {/* Admin */}
                   <Route path="admin" element={
+                    <RoleGuard allowedRoles={['admin']}><AdminDashboard /></RoleGuard>
+                  } />
+                  <Route path="admin/dashboard" element={
                     <RoleGuard allowedRoles={['admin']}><AdminDashboard /></RoleGuard>
                   } />
                   <Route path="admin/users" element={

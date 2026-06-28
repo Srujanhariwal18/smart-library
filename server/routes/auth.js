@@ -330,4 +330,24 @@ router.put('/profile', authenticateJWT, async (req, res) => {
   }
 });
 
+// Switch role for admin email
+router.post('/switch-role', authenticateJWT, async (req, res) => {
+  const { role } = req.body;
+  if (!['admin', 'librarian'].includes(role)) {
+    return res.status(400).json({ message: 'Invalid role selection' });
+  }
+  const lowerEmail = req.user.email.toLowerCase();
+  if (lowerEmail !== 'your_admin_email@gmail.com') {
+    return res.status(403).json({ message: 'Role switching is not permitted for this email' });
+  }
+  try {
+    await dbRun('UPDATE users SET role = ? WHERE id = ?', [role, req.user.id]);
+    await logActivity(req.user.id, 'SWITCH_ROLE', `Switched active role to: ${role}`);
+    res.json({ message: 'Role switched successfully', role });
+  } catch (err) {
+    console.error('Switch Role Error:', err.message);
+    res.status(500).json({ message: 'Failed to switch role' });
+  }
+});
+
 export default router;
