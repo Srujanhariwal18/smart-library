@@ -1,0 +1,9 @@
+server/
+database/
+*.sqlite
+*.db
+node_modules/
+.env
+.env.local
+supabase_schema.sql
+new_features_schema.sql

@@ -1,0 +1,42 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+
+      - name: Install Root Dependencies
+        run: npm install
+
+      - name: Install Backend Server Dependencies
+        run: |
+          cd server
+          npm install
+
+      - name: Install Frontend Client Dependencies
+        run: |
+          cd client
+          npm install
+
+      - name: Build Frontend Client (Compilation Check)
+        run: |
+          cd client
+          npm run build
