@@ -114,8 +114,9 @@ export const ClerkAuthProvider = ({ children }) => {
     } finally {
       setPendingRolePick(false);
       setPendingClerkData(null);
+      setLoading(false);
     }
-  }, [pendingClerkData]);
+  }, [pendingClerkData, getToken]);
 
   const logout = useCallback(async () => {
     try {
