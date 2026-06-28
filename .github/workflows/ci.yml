@@ -1,13 +1,13 @@
-name: Continuous Integration
+name: Smart Library CI
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
   pull_request:
-    branches: [ main, dev ]
+    branches: [main, dev]
 
 jobs:
-  build-and-verify:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,24 +19,20 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            client/package-lock.json
-
-      - name: Install Root Dependencies
-        run: npm install
-
-      - name: Install Backend Server Dependencies
-        run: |
-          cd server
-          npm install
+          cache-dependency-path: client/package-lock.json
 
       - name: Install Frontend Client Dependencies
-        run: |
-          cd client
-          npm install
+        working-directory: client
+        run: npm install
 
       - name: Build Frontend Client (Compilation Check)
-        run: |
-          cd client
-          npm run build
+        working-directory: client
+        run: npm run build
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Install Backend Server Dependencies
+        working-directory: server
+        run: npm install
