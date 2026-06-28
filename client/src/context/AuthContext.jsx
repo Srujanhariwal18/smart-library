@@ -1,40 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth as useClerkAuth, useUser as useClerkUser } from '@clerk/clerk-react';
-import { setTokenResolver, setCurrentUser } from '../utils/api.js';
+import { setTokenResolver, setCurrentUser, apiClerkSync, apiRolePick } from '../utils/api.js';
 
 export const AuthContext = createContext(null);
-
-const API_BASE = `http://${window.location.hostname}:5000/api`;
-
-// ─── API Helpers ─────────────────────────────────────────────────────────────
-async function apiClerkSync(clerkId, email, name, requestedRole = null) {
-  const res = await fetch(`${API_BASE}/auth/clerk-sync`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clerkId, email, name, requestedRole }),
-  });
-  const data = await res.json();
-  if (!res.ok && res.status !== 202) throw new Error(data.message || 'Sync failed');
-  return { httpStatus: res.status, ...data };
-}
-
-async function apiRolePick(clerkId, email, name, role) {
-  const res = await fetch(`${API_BASE}/auth/clerk-role-pick`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clerkId, email, name, role }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Role pick failed');
-  return data;
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ══════════════════════════════════════════════════════════════════
 // CLERK AUTH PROVIDER  (used when VITE_CLERK_PUBLISHABLE_KEY is set)
 // ══════════════════════════════════════════════════════════════════
 export const ClerkAuthProvider = ({ children }) => {
-  const { isLoaded: isAuthLoaded, isSignedIn, signOut } = useClerkAuth();
+  const { isLoaded: isAuthLoaded, isSignedIn, signOut, getToken } = useClerkAuth();
   const { isLoaded: isUserLoaded, user: clerkUser } = useClerkUser();
 
   const [user, setUser]                     = useState(null);
@@ -72,7 +46,20 @@ export const ClerkAuthProvider = ({ children }) => {
     const sync = async () => {
       try {
         setSyncError(null);
-        const result = await apiClerkSync(clerkUser.id, email, name);
+        let supabaseToken = null;
+        if (import.meta.env.VITE_SUPABASE_URL) {
+          try {
+            supabaseToken = await getToken({ template: 'supabase' });
+            if (!supabaseToken) {
+              throw new Error('Failed to get Supabase token from Clerk. Check JWT template name is exactly: supabase');
+            }
+          } catch (tokenErr) {
+            console.error('Clerk getToken Error:', tokenErr.message);
+            throw new Error('Failed to fetch authentication token from Clerk. Please ensure the "supabase" JWT template is configured.');
+          }
+        }
+
+        const result = await apiClerkSync(clerkUser.id, email, name, null, supabaseToken);
 
         if (cancelled) return;
 
@@ -96,7 +83,7 @@ export const ClerkAuthProvider = ({ children }) => {
 
     sync();
     return () => { cancelled = true; };
-  }, [isAuthLoaded, isUserLoaded, isSignedIn, clerkUser?.id, syncTrigger]);
+  }, [isAuthLoaded, isUserLoaded, isSignedIn, clerkUser?.id, syncTrigger, getToken]);
 
   const applySession = (tok, usr) => {
     setToken(tok);
@@ -110,11 +97,16 @@ export const ClerkAuthProvider = ({ children }) => {
   const confirmRolePick = useCallback(async (chosenRole) => {
     if (!pendingClerkData) return;
     try {
+      let supabaseToken = null;
+      if (import.meta.env.VITE_SUPABASE_URL) {
+        supabaseToken = await getToken({ template: 'supabase' });
+      }
       const result = await apiRolePick(
         pendingClerkData.clerkId,
         pendingClerkData.email,
         pendingClerkData.name,
-        chosenRole
+        chosenRole,
+        supabaseToken
       );
       applySession(result.token, result.user);
     } catch (err) {

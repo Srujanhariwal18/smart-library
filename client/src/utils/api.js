@@ -1,12 +1,12 @@
-import { supabase } from './supabase.js';
+import { supabase, supabaseClient } from './supabase.js';
 
-const BASE_URL = `http://${window.location.hostname}:5000/api`;
+const BASE_URL = '/api';
 
 // When Clerk is enabled, we use our own Express API (which talks to SQLite).
 // When neither Clerk nor Supabase is configured, we also use Express API (mock mode).
 // Only use the Supabase client layer when Supabase URL is set but Clerk is NOT set.
 const isClerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const isSupabaseEnabled = !!import.meta.env.VITE_SUPABASE_URL && !isClerkEnabled;
+const isSupabaseEnabled = !!import.meta.env.VITE_SUPABASE_URL;
 
 
 let tokenResolver = () => localStorage.getItem('lib_token');
@@ -1358,6 +1358,195 @@ export const apiUpload = async (endpoint, formData, method = 'POST') => {
   } catch (err) {
     console.error('Supabase Emulation UPLOAD Error:', err);
     throw err;
+  }
+};
+
+const ADMIN_LIBRARIAN_EMAIL = 'srujanhariwal464@gmail.com';
+const TEACHER_EMAIL = 'srujanhariwal18@gmail.com';
+
+const resolveRoleForEmail = (email, requestedRole = null) => {
+  const lower = (email || '').toLowerCase();
+  if (lower === ADMIN_LIBRARIAN_EMAIL) {
+    return ['admin', 'librarian'].includes(requestedRole) ? requestedRole : 'admin';
+  }
+  if (lower === TEACHER_EMAIL) return 'teacher';
+  return requestedRole === 'teacher' ? 'teacher' : 'student';
+};
+
+export const apiClerkSync = async (clerkId, email, name, requestedRole = null, supabaseAccessToken = null) => {
+  console.log('Sync mode:', import.meta.env.VITE_SUPABASE_URL ? 'LIVE/Supabase' : 'LOCAL/Express');
+  console.log('API call to:', isSupabaseEnabled ? 'Supabase (' + import.meta.env.VITE_SUPABASE_URL + ')' : `${BASE_URL}/auth/clerk-sync`);
+
+  if (!isSupabaseEnabled) {
+    const res = await fetch(`${BASE_URL}/auth/clerk-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerkId, email, name, requestedRole }),
+    });
+    const data = await res.json();
+    if (!res.ok && res.status !== 202) throw new Error(data.message || 'Sync failed');
+    return { httpStatus: res.status, ...data };
+  }
+
+  try {
+    const lowerEmail = email.toLowerCase();
+    const client = await supabaseClient(supabaseAccessToken);
+
+    // 1. Try finding user by clerk_id
+    let { data: user, error: fetchErr } = await client
+      .from('users')
+      .select('*')
+      .eq('clerk_id', clerkId)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error('Supabase fetch user by clerkId error:', fetchErr.message);
+    }
+
+    // 2. Try linking by email if not found by clerk_id
+    if (!user) {
+      let { data: emailUser, error: emailErr } = await client
+        .from('users')
+        .select('*')
+        .eq('email', lowerEmail)
+        .maybeSingle();
+
+      if (emailErr) {
+        console.error('Supabase fetch user by email error:', emailErr.message);
+      }
+
+      if (emailUser) {
+        const { data: updatedUser, error: updateErr } = await client
+          .from('users')
+          .update({ clerk_id: clerkId })
+          .eq('id', emailUser.id)
+          .select()
+          .single();
+
+        if (updateErr) {
+          console.error('Supabase link clerkId error:', updateErr.message);
+        } else {
+          user = updatedUser;
+        }
+      }
+    }
+
+    // 3. New user path
+    if (!user) {
+      const isAdminLibrarianEmail = lowerEmail === ADMIN_LIBRARIAN_EMAIL;
+
+      if (isAdminLibrarianEmail && !['admin', 'librarian'].includes(requestedRole)) {
+        return { needsRolePick: true };
+      }
+
+      const role = resolveRoleForEmail(lowerEmail, requestedRole);
+      if (isAdminLibrarianEmail && !['admin', 'librarian'].includes(role)) {
+        return { needsRolePick: true };
+      }
+
+      const displayName = name || email.split('@')[0];
+
+      // FIX 2.4 - Use upsert instead of insert to avoid duplicate user conflicts
+      const { data: newUser, error: insertErr } = await client
+        .from('users')
+        .upsert({
+          clerk_id: clerkId,
+          email: lowerEmail,
+          name: displayName,
+          role: role,
+          status: 'active'
+        }, { onConflict: 'clerk_id' })
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.error('Supabase user upsert error:', insertErr.message);
+        throw insertErr;
+      }
+      user = newUser;
+    }
+
+    if (user && user.status === 'suspended') {
+      throw new Error('Your account is suspended. Contact administration.');
+    }
+
+    return {
+      token: supabaseAccessToken,
+      user: user
+    };
+  } catch (error) {
+    console.error('Supabase sync error:', error.message);
+    throw error;
+  }
+};
+
+export const apiRolePick = async (clerkId, email, name, role, supabaseAccessToken = null) => {
+  if (!isSupabaseEnabled) {
+    const res = await fetch(`${BASE_URL}/auth/clerk-role-pick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerkId, email, name, role }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Role pick failed');
+    return data;
+  }
+
+  try {
+    const lowerEmail = email.toLowerCase();
+    if (lowerEmail !== ADMIN_LIBRARIAN_EMAIL) {
+      throw new Error('Role picking is not allowed for this email');
+    }
+
+    const client = await supabaseClient(supabaseAccessToken);
+
+    let { data: user, error: fetchErr } = await client
+      .from('users')
+      .select('*')
+      .eq('clerk_id', clerkId)
+      .maybeSingle();
+
+    if (!user) {
+      const displayName = name || email.split('@')[0];
+      const { data: newUser, error: insertErr } = await client
+        .from('users')
+        .upsert({
+          clerk_id: clerkId,
+          email: lowerEmail,
+          name: displayName,
+          role: role,
+          status: 'active'
+        }, { onConflict: 'clerk_id' })
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.error('Supabase user upsert role-pick error:', insertErr.message);
+        throw insertErr;
+      }
+      user = newUser;
+    } else {
+      const { data: updatedUser, error: updateErr } = await client
+        .from('users')
+        .update({ role: role })
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        console.error('Supabase role update error:', updateErr.message);
+        throw updateErr;
+      }
+      user = updatedUser;
+    }
+
+    return {
+      token: supabaseAccessToken,
+      user: user
+    };
+  } catch (error) {
+    console.error('Supabase role pick error:', error.message);
+    throw error;
   }
 };
 

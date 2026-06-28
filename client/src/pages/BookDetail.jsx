@@ -119,7 +119,7 @@ const BookDetail = () => {
 
       const token = localStorage.getItem('lib_token');
       // Fetch PDF as Blob to bypass browser standard link download hurdles
-      const res = await fetch(`http://${window.location.hostname}:5000/api/books/${book.id}/ebook/download`, {
+      const res = await fetch(`/api/books/${book.id}/ebook/download`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
