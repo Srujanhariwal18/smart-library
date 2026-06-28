@@ -4,7 +4,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 
 /**
  * RolePickerModal
- * Shown to your_admin_email@gmail.com after Clerk authentication
+ * Shown to srujanhariwal464@gmail.com after Clerk authentication
  * so they can choose between Admin and Librarian before entering the app.
  */
 const RolePickerModal = () => {

@@ -57,7 +57,7 @@ const Sidebar = () => {
         </div>
 
         {/* Role Switcher for Admin Email */}
-        {user.email?.toLowerCase() === 'your_admin_email@gmail.com' && (
+        {user.email?.toLowerCase() === 'srujanhariwal464@gmail.com' && (
           <button
             onClick={async () => {
               const targetRole = user.role === 'admin' ? 'librarian' : 'admin';

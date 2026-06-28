@@ -1361,8 +1361,8 @@ export const apiUpload = async (endpoint, formData, method = 'POST') => {
   }
 };
 
-const ADMIN_LIBRARIAN_EMAILS = ['your_admin_email@gmail.com'];
-const TEACHER_EMAILS = ['your_teacher_email@gmail.com'];
+const ADMIN_LIBRARIAN_EMAILS = ['srujanhariwal464@gmail.com'];
+const TEACHER_EMAILS = ['srujanhariwal18@gmail.com'];
 
 const resolveRoleForEmail = (email, requestedRole = null) => {
   const lower = (email || '').toLowerCase();

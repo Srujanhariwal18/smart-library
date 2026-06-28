@@ -39,11 +39,11 @@ export const authenticateJWT = async (req, res, next) => {
             user.clerk_id = clerkUserId;
           } else {
             // Role Whitelist:
-            // your_admin_email@gmail.com → admin OR librarian (chosen by user via role picker)
-            // your_teacher_email@gmail.com  → teacher
+            // srujanhariwal464@gmail.com → admin OR librarian (chosen by user via role picker)
+            // srujanhariwal18@gmail.com  → teacher
             // everyone else              → student
-            const ADMIN_LIBRARIAN_EMAIL = 'your_admin_email@gmail.com';
-            const TEACHER_EMAIL = 'your_teacher_email@gmail.com';
+            const ADMIN_LIBRARIAN_EMAIL = 'srujanhariwal464@gmail.com';
+            const TEACHER_EMAIL = 'srujanhariwal18@gmail.com';
 
             let role = 'student';
             const lowerEmail = (email || '').toLowerCase();

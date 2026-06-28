@@ -42,7 +42,7 @@ export const ClerkAuthProvider = ({ children }) => {
                   || email.split('@')[0];
 
     // FIX 2 — Always show the role picker for admin email on every login, not just first time
-    const ADMIN_LIBRARIAN_EMAILS = ['your_admin_email@gmail.com'];
+    const ADMIN_LIBRARIAN_EMAILS = ['srujanhariwal464@gmail.com'];
     if (ADMIN_LIBRARIAN_EMAILS.includes(email) && !user) {
       setPendingClerkData({ clerkId: clerkUser.id, email, name });
       setPendingRolePick(true);
