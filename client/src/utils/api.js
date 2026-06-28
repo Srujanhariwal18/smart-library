@@ -400,6 +400,97 @@ export const apiGet = async (endpoint) => {
       }));
     }
 
+    // ── NEW FEATURE: Avg Book Ratings ─────────────────────────────────────────
+    if (endpoint === '/catalog/ratings') {
+      const { data: reviews } = await supabase.from('reviews').select('book_id, rating');
+      const ratingMap = {};
+      for (const r of (reviews || [])) {
+        if (!ratingMap[r.book_id]) ratingMap[r.book_id] = { sum: 0, count: 0 };
+        ratingMap[r.book_id].sum += r.rating;
+        ratingMap[r.book_id].count += 1;
+      }
+      return Object.keys(ratingMap).map(bookId => ({
+        book_id: parseInt(bookId),
+        avg_rating: ratingMap[bookId].sum / ratingMap[bookId].count,
+        review_count: ratingMap[bookId].count
+      }));
+    }
+
+    // ── NEW FEATURE: Exam Papers ──────────────────────────────────────────────
+    if (endpoint === '/exam-papers') {
+      const { data: papers } = await supabase.from('exam_papers').select('*').order('created_at', { ascending: false });
+      return papers || [];
+    }
+
+    // ── NEW FEATURE: Announcements (for banner — filtered by role) ────────────
+    if (endpoint === '/announcements') {
+      const { data: announcements } = await supabase
+        .from('announcements')
+        .select('*')
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+        .order('created_at', { ascending: false });
+      return announcements || [];
+    }
+
+    // ── NEW FEATURE: All Announcements (admin management view) ────────────────
+    if (endpoint === '/announcements/all') {
+      const { data: announcements } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('created_at', { ascending: false });
+      return announcements || [];
+    }
+
+    // ── NEW FEATURE: Advanced Analytics ──────────────────────────────────────
+    if (endpoint === '/admin/analytics') {
+      // Monthly borrow trend — last 12 months
+      const { data: borrows } = await supabase.from('borrows').select('borrow_date');
+      const monthMap = {};
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthMap[key] = 0;
+      }
+      for (const b of (borrows || [])) {
+        const dt = new Date(b.borrow_date);
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        if (key in monthMap) monthMap[key]++;
+      }
+      const monthlyTrend = Object.keys(monthMap).map(m => ({
+        month: m,
+        count: monthMap[m]
+      }));
+
+      // Top books
+      const { data: allBorrows } = await supabase.from('borrows').select('books (title)');
+      const topMap = {};
+      for (const b of (allBorrows || [])) {
+        const t = b.books?.title;
+        if (t) topMap[t] = (topMap[t] || 0) + 1;
+      }
+      const topBooks = Object.keys(topMap)
+        .map(k => ({ title: k, borrow_count: topMap[k] }))
+        .sort((a, b) => b.borrow_count - a.borrow_count)
+        .slice(0, 10);
+
+      // Peak hours — day 0-6, hour 0-23
+      const peakMap = {};
+      for (const b of (borrows || [])) {
+        const dt = new Date(b.borrow_date);
+        const day = dt.getDay();
+        const hour = dt.getHours();
+        const k = `${day}_${hour}`;
+        peakMap[k] = (peakMap[k] || 0) + 1;
+      }
+      const peakHours = Object.keys(peakMap).map(k => {
+        const [day, hour] = k.split('_').map(Number);
+        return { day, hour, count: peakMap[k] };
+      });
+
+      return { monthlyTrend, topBooks, peakHours };
+    }
+
     throw new Error(`Endpoint GET ${endpoint} not simulated in Supabase layer.`);
   } catch (err) {
     console.error('Supabase Emulation GET Error:', err);
@@ -926,6 +1017,24 @@ export const apiPost = async (endpoint, body) => {
       return author;
     }
 
+    // ── NEW FEATURE: Announcements ────────────────────────────────────────────
+    if (endpoint === '/announcements') {
+      const { message, target_role, expires_at, created_by } = body;
+      const { data: announcement } = await supabase.from('announcements').insert({
+        message,
+        target_role: target_role || 'all',
+        expires_at: expires_at || null,
+        created_by: created_by || currentUser?.id
+      }).select().single();
+
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser?.id,
+        action: 'CREATE_ANNOUNCEMENT',
+        details: `Created announcement targeting "${target_role}": "${message.substring(0, 50)}..."`
+      });
+      return announcement;
+    }
+
     throw new Error(`Endpoint POST ${endpoint} not simulated in Supabase layer.`);
   } catch (err) {
     console.error('Supabase Emulation POST Error:', err);
@@ -1060,6 +1169,19 @@ export const apiDelete = async (endpoint) => {
       return { message: 'User deleted successfully' };
     }
 
+    // ── NEW FEATURE: Delete Announcement ─────────────────────────────────────
+    if (endpoint.startsWith('/announcements/')) {
+      const parts = endpoint.split('/');
+      const announcementId = parseInt(parts[2]);
+      await supabase.from('announcements').delete().eq('id', announcementId);
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser?.id,
+        action: 'DELETE_ANNOUNCEMENT',
+        details: `Deleted announcement ID ${announcementId}`
+      });
+      return { message: 'Announcement deleted successfully' };
+    }
+
     throw new Error(`Endpoint DELETE ${endpoint} not simulated in Supabase layer.`);
   } catch (err) {
     console.error('Supabase Emulation DELETE Error:', err);
@@ -1087,6 +1209,9 @@ export const apiUpload = async (endpoint, formData, method = 'POST') => {
     const coverFile = formData.get('cover');
     const pdfFile = formData.get('pdf');
     let coverUrl = '/uploads/covers/placeholder.jpg';
+    if (typeof coverFile === 'string' && (coverFile.startsWith('http://') || coverFile.startsWith('https://'))) {
+      coverUrl = coverFile;
+    }
     let pdfUrl = null;
 
     const bucket = 'library';
@@ -1153,7 +1278,7 @@ export const apiUpload = async (endpoint, formData, method = 'POST') => {
         location: fields.location || ''
       };
 
-      if (coverFile instanceof File) {
+      if (coverFile instanceof File || (typeof coverFile === 'string' && (coverFile.startsWith('http://') || coverFile.startsWith('https://')))) {
         updateData.cover_image = coverUrl;
       }
 
@@ -1193,9 +1318,46 @@ export const apiUpload = async (endpoint, formData, method = 'POST') => {
       return { message: 'E-book PDF uploaded successfully' };
     }
 
+    // ── NEW FEATURE: Upload Exam Paper PDF ────────────────────────────────────
+    if (endpoint === '/exam-papers' && method === 'POST') {
+      const paperFile = formData.get('paper');
+      let fileUrl = null;
+
+      if (paperFile && paperFile instanceof File) {
+        const filename = `${Date.now()}-${paperFile.name.replace(/\s+/g, '_')}`;
+        const filePath = `papers/${filename}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('question-papers')
+          .upload(filePath, paperFile, { cacheControl: '3600', upsert: true });
+
+        if (uploadErr) throw new Error('Paper upload failed: ' + uploadErr.message);
+
+        const { data: publicUrlData } = supabase.storage.from('question-papers').getPublicUrl(filePath);
+        fileUrl = publicUrlData.publicUrl;
+      }
+
+      const { data: paper } = await supabase.from('exam_papers').insert({
+        title: fields.title,
+        subject: fields.subject,
+        branch: fields.branch,
+        year: parseInt(fields.year),
+        file_url: fileUrl,
+        uploaded_by: fields.uploaded_by ? parseInt(fields.uploaded_by) : currentUser?.id
+      }).select().single();
+
+      await supabase.from('user_activity_logs').insert({
+        user_id: currentUser?.id,
+        action: 'UPLOAD_EXAM_PAPER',
+        details: `Uploaded exam paper: "${fields.title}" (${fields.branch} - ${fields.subject} ${fields.year})`
+      });
+
+      return { id: paper.id, message: 'Exam paper uploaded successfully' };
+    }
+
     throw new Error(`Endpoint UPLOAD ${endpoint} not simulated in Supabase layer.`);
   } catch (err) {
     console.error('Supabase Emulation UPLOAD Error:', err);
     throw err;
   }
 };
+

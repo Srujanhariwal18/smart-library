@@ -7,10 +7,16 @@ import { apiGet } from '../utils/api.js';
 import { Sun, Moon, Bell, Search, LogOut, CheckCheck, BookOpen, User } from 'lucide-react';
 
 const Navbar = () => {
-  const { darkMode, toggleDarkMode } = useTheme();
+  const { darkMode, toggleDarkMode, syncUserTheme } = useTheme();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user?.id && syncUserTheme) {
+      syncUserTheme(user.id);
+    }
+  }, [user?.id, syncUserTheme]);
 
   // Search autocomplete state
   const [searchQuery, setSearchQuery] = useState('');

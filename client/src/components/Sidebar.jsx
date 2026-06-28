@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { 
   BookOpen, History, Heart, Calendar, 
   Settings, Users, BarChart3, ShieldAlert,
-  FolderOpen, Bookmark, LogOut, ShieldCheck
+  FolderOpen, Bookmark, LogOut, ShieldCheck,
+  CreditCard, GraduationCap, Megaphone
 } from 'lucide-react';
 import { UserButton } from '@clerk/clerk-react';
 
@@ -74,6 +75,14 @@ const Sidebar = () => {
               <Calendar size={18} />
               <span>My Reservations</span>
             </Link>
+            <Link to="/student/library-card" className={linkClass('/student/library-card')}>
+              <CreditCard size={18} />
+              <span>My Library Card</span>
+            </Link>
+            <Link to="/student/papers" className={linkClass('/student/papers')}>
+              <GraduationCap size={18} />
+              <span>Exam Papers</span>
+            </Link>
           </>
         )}
 
@@ -95,6 +104,10 @@ const Sidebar = () => {
             <Link to="/librarian/reservations" className={linkClass('/librarian/reservations')}>
               <Calendar size={18} />
               <span>Reservations Queue</span>
+            </Link>
+            <Link to="/librarian/exam-papers" className={linkClass('/librarian/exam-papers')}>
+              <GraduationCap size={18} />
+              <span>Exam Papers</span>
             </Link>
           </>
         )}
@@ -121,6 +134,10 @@ const Sidebar = () => {
             <Link to="/admin/logs" className={linkClass('/admin/logs')}>
               <ShieldAlert size={18} />
               <span>User Activity Logs</span>
+            </Link>
+            <Link to="/admin/announcements" className={linkClass('/admin/announcements')}>
+              <Megaphone size={18} />
+              <span>Announcements</span>
             </Link>
           </>
         )}

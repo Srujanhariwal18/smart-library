@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Bookmark, ClipboardList, Send, RotateCcw, AlertCircle, CheckCircle, UserCheck, XCircle } from 'lucide-react';
+import { Bookmark, ClipboardList, Send, RotateCcw, AlertCircle, CheckCircle, UserCheck, XCircle, ScanLine } from 'lucide-react';
+import BarcodeScannerModal from '../../components/BarcodeScannerModal.jsx';
 
 const LibrarianIssue = () => {
   const [activeTab, setActiveTab] = useState('issue'); // 'issue', 'history', or 'requests'
@@ -20,6 +21,44 @@ const LibrarianIssue = () => {
 
   // Return Book Action State
   const [returningId, setReturningId] = useState(null);
+
+  // Scanner States (Feature 7)
+  const [scannerMode, setScannerMode] = useState(null); // 'student' or 'book'
+  const [showScanner, setShowScanner] = useState(false);
+
+  const openScanner = (mode) => {
+    setScannerMode(mode);
+    setShowScanner(true);
+  };
+
+  const handleScanResult = (result) => {
+    if (scannerMode === 'student') {
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.email) {
+          setStudentEmail(parsed.email);
+          addToast(`Scanned library card for student: ${parsed.name}`, 'success');
+        } else {
+          setStudentEmail(result);
+        }
+      } catch {
+        setStudentEmail(result);
+      }
+    } else if (scannerMode === 'book') {
+      const cleanIsbn = result.trim().replace(/[-\s]/g, '');
+      const matched = books.find(b => b.isbn.trim().replace(/[-\s]/g, '') === cleanIsbn);
+      if (matched) {
+        if (matched.available_copies <= 0) {
+          addToast(`Book "${matched.title}" is currently out of stock`, 'warning');
+        } else {
+          setSelectedBookId(matched.id.toString());
+          addToast(`Auto-selected book: ${matched.title}`, 'success');
+        }
+      } else {
+        addToast(`ISBN code "${result}" not found in current inventory`, 'error');
+      }
+    }
+  };
 
   const fetchBooks = async () => {
     try {
@@ -197,35 +236,55 @@ const LibrarianIssue = () => {
               <label htmlFor="email" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Student Email Address
               </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={studentEmail}
-                onChange={(e) => setStudentEmail(e.target.value)}
-                placeholder="student@library.com"
-                className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 outline-none focus:border-primary-500 transition"
-              />
+              <div className="flex gap-2">
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={studentEmail}
+                  onChange={(e) => setStudentEmail(e.target.value)}
+                  placeholder="student@library.com"
+                  className="flex-1 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 outline-none focus:border-primary-500 transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => openScanner('student')}
+                  className="px-3.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-350 rounded-xl flex items-center justify-center transition-colors shrink-0"
+                  title="Scan Student Card"
+                >
+                  <ScanLine size={16} />
+                </button>
+              </div>
             </div>
 
             <div>
               <label htmlFor="book" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Select Book
               </label>
-              <select
-                id="book"
-                required
-                value={selectedBookId}
-                onChange={(e) => setSelectedBookId(e.target.value)}
-                className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 outline-none focus:border-primary-500 transition"
-              >
-                <option value="">Choose a book from inventory...</option>
-                {books.map((b) => (
-                  <option key={b.id} value={b.id} disabled={b.available_copies <= 0}>
-                    {b.title} ({b.available_copies} of {b.total_copies} available)
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  id="book"
+                  required
+                  value={selectedBookId}
+                  onChange={(e) => setSelectedBookId(e.target.value)}
+                  className="flex-1 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 outline-none focus:border-primary-500 transition"
+                >
+                  <option value="">Choose a book from inventory...</option>
+                  {books.map((b) => (
+                    <option key={b.id} value={b.id} disabled={b.available_copies <= 0}>
+                      {b.title} ({b.available_copies} of {b.total_copies} available)
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => openScanner('book')}
+                  className="px-3.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-350 rounded-xl flex items-center justify-center transition-colors shrink-0"
+                  title="Scan Book ISBN"
+                >
+                  <ScanLine size={16} />
+                </button>
+              </div>
             </div>
 
             <button
@@ -419,6 +478,12 @@ const LibrarianIssue = () => {
             </div>
           )}
         </div>
+      )}
+      {showScanner && (
+        <BarcodeScannerModal
+          onScan={handleScanResult}
+          onClose={() => setShowScanner(false)}
+        />
       )}
     </div>
   );

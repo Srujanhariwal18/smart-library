@@ -133,3 +133,36 @@ CREATE INDEX IF NOT EXISTS idx_borrows_user_id ON borrows(user_id);
 CREATE INDEX IF NOT EXISTS idx_borrows_status ON borrows(status);
 CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read);
+
+-- ── NEW FEATURES TABLES ───────────────────────────────────────────────────────
+
+-- Feature 5: Exam Papers Archive
+CREATE TABLE IF NOT EXISTS exam_papers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    file_url TEXT NOT NULL,
+    uploaded_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Feature 11: In-App Announcements
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT NOT NULL,
+    target_role TEXT NOT NULL CHECK(target_role IN ('student', 'teacher', 'librarian', 'admin', 'all')),
+    expires_at DATETIME,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Feature 12: Theme preferences stored as JSON string in users
+-- (preferences column added via ALTER TABLE IF NOT EXISTS in server startup)
+
+CREATE INDEX IF NOT EXISTS idx_exam_papers_branch ON exam_papers(branch);
+CREATE INDEX IF NOT EXISTS idx_exam_papers_subject ON exam_papers(subject);
+CREATE INDEX IF NOT EXISTS idx_announcements_role ON announcements(target_role);

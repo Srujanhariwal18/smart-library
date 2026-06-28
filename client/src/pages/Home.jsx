@@ -1,17 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { apiGet, getCoverUrl } from '../utils/api.js';
-import { Search, Filter, BookOpen, Layers, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { apiGet, apiPost, getCoverUrl } from '../utils/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
+import { Search, Filter, BookOpen, Layers, User, ChevronLeft, ChevronRight, Star, X, SlidersHorizontal } from 'lucide-react';
 
 const Home = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { addToast } = useToast();
 
   // Search filter states
   const [books, setBooks] = useState([]);
   const [categories, setCategories] = useState([]);
   const [authors, setAuthors] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Feature 2: Ratings
+  const [ratingsMap, setRatingsMap] = useState({}); // book_id -> { avg_rating, review_count }
+  const [ratingModal, setRatingModal] = useState(null); // { bookId, bookTitle }
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [returnedBookIds, setReturnedBookIds] = useState(new Set());
+
+  // Feature 3: Advanced Client-side Filters
+  const [advFiltersOpen, setAdvFiltersOpen] = useState(false);
+  const [minYear, setMinYear] = useState('');
+  const [maxYear, setMaxYear] = useState('');
+  const [minRating, setMinRating] = useState(0);
 
   // Pagination states
   const [pagination, setPagination] = useState({
@@ -67,6 +85,66 @@ const Home = () => {
     fetchBooks();
   }, [searchVal, categoryVal, authorVal, statusVal, pageVal]);
 
+  // Fetch avg ratings (Feature 2)
+  useEffect(() => {
+    const fetchRatings = async () => {
+      try {
+        const data = await apiGet('/catalog/ratings');
+        const map = {};
+        for (const r of (data || [])) map[r.book_id] = r;
+        setRatingsMap(map);
+      } catch { /* silent */ }
+    };
+    fetchRatings();
+  }, []);
+
+  // Fetch user's returned book IDs for rating eligibility (Feature 2)
+  useEffect(() => {
+    if (!user || user.role !== 'student') return;
+    const fetchReturned = async () => {
+      try {
+        const history = await apiGet('/borrows/history');
+        const ids = new Set(
+          history.filter(b => b.status === 'returned').map(b => b.book_id)
+        );
+        setReturnedBookIds(ids);
+      } catch { /* silent */ }
+    };
+    fetchReturned();
+  }, [user]);
+
+  const handleSubmitRating = async () => {
+    if (!ratingModal) return;
+    setSubmittingRating(true);
+    try {
+      await apiPost(`/books/${ratingModal.bookId}/review`, { rating: ratingValue, comment: ratingComment });
+      addToast('Review submitted!', 'success');
+      setRatingModal(null); setRatingComment(''); setRatingValue(5);
+      // Refresh ratings
+      const data = await apiGet('/catalog/ratings');
+      const map = {};
+      for (const r of (data || [])) map[r.book_id] = r;
+      setRatingsMap(map);
+    } catch (err) {
+      addToast(err.message || 'Failed to submit review', 'error');
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
+
+  // Feature 3: Derive filtered books client-side
+  const filteredBooks = books.filter(book => {
+    if (minYear && book.publication_year && book.publication_year < parseInt(minYear)) return false;
+    if (maxYear && book.publication_year && book.publication_year > parseInt(maxYear)) return false;
+    if (minRating > 0) {
+      const rating = ratingsMap[book.id]?.avg_rating || 0;
+      if (rating < minRating) return false;
+    }
+    return true;
+  });
+
+  const hasAdvFilters = minYear || maxYear || minRating > 0;
+
   const updateFilters = (key, value) => {
     const newParams = new URLSearchParams(searchParams);
     if (value) {
@@ -84,6 +162,19 @@ const Home = () => {
     newParams.set('page', newPage.toString());
     setSearchParams(newParams);
   };
+
+  // Star rating render helper
+  const renderStars = (avg, size = 14) => (
+    <span className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(n => (
+        <Star
+          key={n}
+          size={size}
+          className={n <= Math.round(avg) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-700'}
+        />
+      ))}
+    </span>
+  );
 
   return (
     <div className="space-y-6">
@@ -156,14 +247,69 @@ const Home = () => {
             Clear All Filters
           </button>
         )}
+
+        {/* Feature 3: Advanced Filters Toggle */}
+        <button
+          onClick={() => setAdvFiltersOpen(v => !v)}
+          className={`flex items-center gap-1.5 ml-auto px-3 py-2 rounded-lg text-xs font-bold border transition-all ${
+            advFiltersOpen || hasAdvFilters
+              ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-950/40 dark:text-primary-400 dark:border-primary-900/50'
+              : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:border-primary-400 hover:text-primary-600'
+          }`}
+        >
+          <SlidersHorizontal size={13} />
+          Advanced Filters {hasAdvFilters ? '●' : ''}
+        </button>
       </div>
+
+      {/* Feature 3: Advanced Filter Panel */}
+      {advFiltersOpen && (
+        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-primary-200 dark:border-primary-900/40 shadow-md flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Min Year</label>
+            <input
+              type="number" min="1900" max={new Date().getFullYear()}
+              value={minYear} onChange={e => setMinYear(e.target.value)}
+              placeholder="e.g. 2000"
+              className="w-28 px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Max Year</label>
+            <input
+              type="number" min="1900" max={new Date().getFullYear()}
+              value={maxYear} onChange={e => setMaxYear(e.target.value)}
+              placeholder={String(new Date().getFullYear())}
+              className="w-28 px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Min Rating</label>
+            <select
+              value={minRating} onChange={e => setMinRating(Number(e.target.value))}
+              className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-primary-500"
+            >
+              <option value={0}>Any Rating</option>
+              {[1,2,3,4].map(n => <option key={n} value={n}>{n}+ Stars</option>)}
+            </select>
+          </div>
+          {hasAdvFilters && (
+            <button
+              onClick={() => { setMinYear(''); setMaxYear(''); setMinRating(0); }}
+              className="text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-2"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Book Grid */}
       {loading ? (
         <div className="min-h-[400px] flex items-center justify-center">
           <div className="w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
-      ) : books.length === 0 ? (
+      ) : filteredBooks.length === 0 ? (
         <div className="text-center py-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl">
           <BookOpen size={48} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
           <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">No books found</h3>
@@ -171,10 +317,12 @@ const Home = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {books.map((book) => {
+          {filteredBooks.map((book) => {
             const hasEbook = !!book.ebook_path;
             const isAvailable = book.available_copies > 0;
             const coverUrl = getCoverUrl(book.cover_image);
+            const bookRating = ratingsMap[book.id];
+            const canRate = user?.role === 'student' && returnedBookIds.has(book.id);
 
             return (
               <div
@@ -230,18 +378,39 @@ const Home = () => {
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 line-clamp-2 leading-relaxed">
                       {book.description || 'No description available for this catalog entry.'}
                     </p>
+                    {/* Feature 2: Show avg rating */}
+                    {bookRating && (
+                      <div className="flex items-center gap-1.5 mt-2">
+                        {renderStars(bookRating.avg_rating)}
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {bookRating.avg_rating.toFixed(1)} ({bookRating.review_count})
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
                     <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
                       {book.available_copies} / {book.total_copies} copies left
                     </span>
-                    <button
-                      onClick={() => navigate(`/books/${book.id}`)}
-                      className="px-4 py-2 text-xs font-bold rounded-lg text-white bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700/80 transition-colors"
-                    >
-                      View Details
-                    </button>
+                    <div className="flex gap-2">
+                      {/* Feature 2: Rate button for eligible students */}
+                      {canRate && (
+                        <button
+                          onClick={() => setRatingModal({ bookId: book.id, bookTitle: book.title })}
+                          className="px-3 py-2 text-xs font-bold rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 dark:text-amber-400 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 transition flex items-center gap-1"
+                        >
+                          <Star size={11} className="fill-amber-400 text-amber-400" />
+                          Rate
+                        </button>
+                      )}
+                      <button
+                        onClick={() => navigate(`/books/${book.id}`)}
+                        className="px-4 py-2 text-xs font-bold rounded-lg text-white bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700/80 transition-colors"
+                      >
+                        View Details
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -272,6 +441,66 @@ const Home = () => {
           >
             <ChevronRight size={16} />
           </button>
+        </div>
+      )}
+
+      {/* Feature 2: Rate Book Modal */}
+      {ratingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 relative">
+            <button
+              onClick={() => setRatingModal(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+            >
+              <X size={20} />
+            </button>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3 mb-4 flex items-center gap-2">
+              <Star size={16} className="text-amber-400 fill-amber-400" />
+              Rate: {ratingModal.bookTitle}
+            </h3>
+
+            {/* Star picker */}
+            <div className="flex justify-center gap-2 mb-4">
+              {[1,2,3,4,5].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setRatingValue(n)}
+                  className="focus:outline-none transition-transform hover:scale-110"
+                >
+                  <Star
+                    size={32}
+                    className={n <= ratingValue ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}
+                  />
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-xs font-semibold text-slate-400 mb-4">{ratingValue} / 5 stars</p>
+
+            <textarea
+              rows={3}
+              value={ratingComment}
+              onChange={e => setRatingComment(e.target.value)}
+              placeholder="Write a short review (optional)..."
+              className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 resize-none outline-none focus:border-primary-500 mb-4"
+            />
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setRatingModal(null)}
+                className="px-4 py-2 text-sm border rounded-xl text-slate-600 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitRating}
+                disabled={submittingRating}
+                className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 shadow-md shadow-amber-500/20 disabled:opacity-50 flex items-center gap-2"
+              >
+                {submittingRating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Star size={14} className="fill-white" />}
+                Submit Review
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -278,4 +278,66 @@ router.get('/logs', async (req, res) => {
   }
 });
 
+// ── NEW FEATURE: Advanced Analytics ──────────────────────────────────────────
+
+router.get('/analytics', async (req, res) => {
+  try {
+    const borrows = await dbAll('SELECT borrow_date FROM borrows');
+
+    // Monthly trend: last 12 months
+    const monthMap = {};
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthMap[key] = 0;
+    }
+    for (const b of borrows) {
+      const dt = new Date(b.borrow_date);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      if (key in monthMap) monthMap[key]++;
+    }
+    const monthlyTrend = Object.keys(monthMap).map(m => ({ month: m, count: monthMap[m] }));
+
+    // Top 10 books
+    const topBooksRaw = await dbAll(`
+      SELECT bk.title, COUNT(b.id) as borrow_count
+      FROM borrows b JOIN books bk ON b.book_id = bk.id
+      GROUP BY bk.id ORDER BY borrow_count DESC LIMIT 10
+    `);
+
+    // Peak hours
+    const peakMap = {};
+    for (const b of borrows) {
+      const dt = new Date(b.borrow_date);
+      const day = dt.getDay();
+      const hour = dt.getHours();
+      const k = `${day}_${hour}`;
+      peakMap[k] = (peakMap[k] || 0) + 1;
+    }
+    const peakHours = Object.keys(peakMap).map(k => {
+      const [day, hour] = k.split('_').map(Number);
+      return { day, hour, count: peakMap[k] };
+    });
+
+    res.json({ monthlyTrend, topBooks: topBooksRaw, peakHours });
+  } catch (err) {
+    console.error('Analytics Error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch analytics' });
+  }
+});
+
+// ── NEW FEATURE: Announcements ────────────────────────────────────────────────
+
+// Get all announcements (admin management view)
+router.get('/announcements-all', async (req, res) => {
+  try {
+    const announcements = await dbAll('SELECT * FROM announcements ORDER BY created_at DESC');
+    res.json(announcements);
+  } catch (err) {
+    console.error('Announcements GET Error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch announcements' });
+  }
+});
+
 export default router;

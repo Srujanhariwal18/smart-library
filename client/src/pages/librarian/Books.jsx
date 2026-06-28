@@ -3,8 +3,9 @@ import { apiGet, apiDelete, apiUpload, apiPost, getCoverUrl } from '../../utils/
 import { useToast } from '../../context/ToastContext.jsx';
 import { 
   FolderOpen, Plus, Edit3, Trash2, FileText, UploadCloud, 
-  X, Check, ChevronLeft, ChevronRight, BookOpen, Search
+  X, Check, ChevronLeft, ChevronRight, BookOpen, Search, ScanLine, Sparkles
 } from 'lucide-react';
+import BarcodeScannerModal from '../../components/BarcodeScannerModal.jsx';
 
 const LibrarianBooks = () => {
   const [books, setBooks] = useState([]);
@@ -33,6 +34,9 @@ const LibrarianBooks = () => {
   const [totalCopies, setTotalCopies] = useState(1);
   const [location, setLocation] = useState('');
   const [coverFile, setCoverFile] = useState(null);
+  const [coverUrl, setCoverUrl] = useState('');
+  const [showScannerModal, setShowScannerModal] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
 
   // Form states (Ebook)
   const [pdfFile, setPdfFile] = useState(null);
@@ -79,6 +83,7 @@ const LibrarianBooks = () => {
     setTotalCopies(1);
     setLocation('');
     setCoverFile(null);
+    setCoverUrl('');
     setShowBookModal(true);
   };
 
@@ -93,7 +98,64 @@ const LibrarianBooks = () => {
     setTotalCopies(book.total_copies);
     setLocation(book.location || '');
     setCoverFile(null);
+    setCoverUrl(book.cover_image || '');
     setShowBookModal(true);
+  };
+
+  // Feature 9: ISBN Lookup via OpenLibrary API
+  const handleIsbnLookup = async (isbnToLookup) => {
+    const code = (isbnToLookup || isbn).trim().replace(/[-\s]/g, '');
+    if (!code) {
+      addToast('Please enter an ISBN code first', 'warning');
+      return;
+    }
+    setLookingUp(true);
+    try {
+      const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${code}&format=json&jscmd=data`);
+      if (!res.ok) throw new Error('Network response was not ok');
+      const data = await res.json();
+      const bookKey = `ISBN:${code}`;
+      const info = data[bookKey];
+      if (!info) {
+        addToast('No books found for this ISBN in OpenLibrary database', 'warning');
+        return;
+      }
+
+      setTitle(info.title + (info.subtitle ? `: ${info.subtitle}` : ''));
+      
+      const yearMatch = info.publish_date?.match(/\d{4}/);
+      if (yearMatch) setPublicationYear(yearMatch[0]);
+
+      setDescription(info.notes || (info.excerpts?.[0]?.text) || info.description || 'Auto-filled synopsis.');
+      
+      const largeCover = info.cover?.large || info.cover?.medium || info.cover?.small || '';
+      if (largeCover) setCoverUrl(largeCover);
+
+      const authorName = info.authors?.[0]?.name;
+      if (authorName) {
+        const matched = authors.find(a => a.name.toLowerCase() === authorName.toLowerCase());
+        if (matched) {
+          setAuthorId(matched.id.toString());
+        } else {
+          addToast(`Author "${authorName}" matches OpenLibrary, but not present in local database.`, 'info');
+        }
+      }
+
+      const subjects = info.subjects || [];
+      let matchedCat = null;
+      for (const sub of subjects) {
+        matchedCat = categories.find(c => c.name.toLowerCase().includes(sub.name.toLowerCase()) || sub.name.toLowerCase().includes(c.name.toLowerCase()));
+        if (matchedCat) break;
+      }
+      if (matchedCat) setCategoryId(matchedCat.id.toString());
+
+      addToast('Book details auto-filled successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('ISBN metadata lookup failed. Please enter details manually.', 'error');
+    } finally {
+      setLookingUp(false);
+    }
   };
 
   const handleOpenEbookModal = (book) => {
@@ -126,6 +188,8 @@ const LibrarianBooks = () => {
     formData.append('location', location);
     if (coverFile) {
       formData.append('cover', coverFile);
+    } else if (coverUrl) {
+      formData.append('cover', coverUrl);
     }
 
     try {
@@ -335,14 +399,40 @@ const LibrarianBooks = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">ISBN Number</label>
-                  <input
-                    type="text"
-                    required
-                    value={isbn}
-                    onChange={(e) => setIsbn(e.target.value)}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-150 outline-none focus:border-primary-500"
-                    placeholder="9780553380163"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      value={isbn}
+                      onChange={(e) => setIsbn(e.target.value)}
+                      className="min-w-0 flex-1 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-150 outline-none focus:border-primary-500"
+                      placeholder="9780553380163"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowScannerModal(true)}
+                      className="px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-350 rounded-lg flex items-center justify-center transition-colors shrink-0"
+                      title="Scan ISBN Barcode"
+                    >
+                      <ScanLine size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={lookingUp}
+                      onClick={() => handleIsbnLookup(isbn)}
+                      className="px-2.5 bg-primary-50 hover:bg-primary-100 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-900/40 text-primary-700 dark:text-primary-400 font-bold text-xs rounded-lg flex items-center justify-center gap-1 transition-colors disabled:opacity-50 shrink-0"
+                      title="Auto-fill details from OpenLibrary"
+                    >
+                      {lookingUp ? (
+                        <div className="w-3.5 h-3.5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Sparkles size={13} />
+                          <span>Lookup</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -499,6 +589,16 @@ const LibrarianBooks = () => {
             </form>
           </div>
         </div>
+      )}
+      {/* Feature 7: Barcode Scanner Modal */}
+      {showScannerModal && (
+        <BarcodeScannerModal
+          onScan={(text) => {
+            setIsbn(text);
+            handleIsbnLookup(text);
+          }}
+          onClose={() => setShowScannerModal(false)}
+        />
       )}
     </div>
   );

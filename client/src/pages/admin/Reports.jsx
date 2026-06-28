@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { BarChart3, Calendar, ClipboardList, DollarSign, Download, Filter } from 'lucide-react';
+import { BarChart3, Calendar, ClipboardList, DollarSign, Download, Filter, FileText } from 'lucide-react';
+import Papa from 'papaparse';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const AdminReports = () => {
   const [activeTab, setActiveTab] = useState('borrows'); // 'borrows' or 'fines'
@@ -36,6 +39,58 @@ const AdminReports = () => {
     fetchReport();
   };
 
+  // ── NEW FEATURE: Export Reports ───────────────────────────────────────────────
+  const handleExportCSV = () => {
+    if (reportData.length === 0) { addToast('No data to export', 'warning'); return; }
+    const csv = Papa.unparse(reportData.map(row => ({
+      'Book Title': row.title || '',
+      'ISBN': row.isbn || '',
+      'User Name': row.user_name || '',
+      'User Email': row.user_email || '',
+      'Borrow Date': row.borrow_date ? new Date(row.borrow_date).toLocaleDateString() : '',
+      'Due Date': row.due_date ? new Date(row.due_date).toLocaleDateString() : '',
+      'Return Date': row.return_date ? new Date(row.return_date).toLocaleDateString() : '',
+      'Status': row.status || '',
+      'Fine ($)': (row.fine_amount || 0).toFixed(2),
+    })));
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `library-${activeTab}-report-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addToast('CSV exported successfully!', 'success');
+  };
+
+  const handleExportPDF = () => {
+    if (reportData.length === 0) { addToast('No data to export', 'warning'); return; }
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(16);
+    doc.text(`Smart Library — ${activeTab === 'borrows' ? 'Borrow' : 'Fine'} Report`, 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+
+    autoTable(doc, {
+      startY: 34,
+      head: [['Book Title', 'User', 'Borrow Date', 'Due Date', 'Return Date', 'Status', 'Fine ($)']],
+      body: reportData.map(row => [
+        row.title || '',
+        `${row.user_name || ''} (${row.user_email || ''})`,
+        row.borrow_date ? new Date(row.borrow_date).toLocaleDateString() : '',
+        row.due_date ? new Date(row.due_date).toLocaleDateString() : '',
+        row.return_date ? new Date(row.return_date).toLocaleDateString() : 'Active',
+        row.status || '',
+        (row.fine_amount || 0).toFixed(2),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [99, 102, 241] }
+    });
+
+    doc.save(`library-${activeTab}-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    addToast('PDF exported successfully!', 'success');
+  };
+
   // Computations
   const totalFineCollected = reportData.reduce((acc, row) => acc + (row.fine_amount || 0), 0);
 
@@ -43,14 +98,33 @@ const AdminReports = () => {
     <div className="space-y-6">
       
       {/* Title */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-          <BarChart3 className="text-primary-500" />
-          Financial & Circulation Reports
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Analyze library checkout frequency, aggregate fine balances, and filter activity logs by date parameters.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
+            <BarChart3 className="text-primary-500" />
+            Financial &amp; Circulation Reports
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Analyze library checkout frequency, aggregate fine balances, and filter activity logs by date parameters.
+          </p>
+        </div>
+        {/* Export Buttons — Feature 8 */}
+        <div className="flex gap-2 self-start">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900/40 transition"
+          >
+            <FileText size={14} />
+            Export CSV
+          </button>
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 dark:text-rose-400 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 border border-rose-200 dark:border-rose-900/40 transition"
+          >
+            <Download size={14} />
+            Export PDF
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}

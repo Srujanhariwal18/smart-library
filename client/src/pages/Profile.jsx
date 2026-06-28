@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { apiPut } from '../utils/api.js';
+import { apiPut, apiGet } from '../utils/api.js';
 import { 
   User, Mail, Shield, Award, 
-  Calendar, Edit3, Settings2, Save, Sparkles, Lock
+  Calendar, Edit3, Settings2, Save, Sparkles, Lock,
+  BookOpen, TrendingUp, Layers, DollarSign
 } from 'lucide-react';
 
 // -------------------------------------------------------
@@ -60,6 +61,36 @@ const Profile = () => {
   const [name, setName] = useState(user?.name || '');
   const [role, setRole] = useState(user?.role || 'student');
   const [saving, setSaving] = useState(false);
+
+  // Feature 6: Reading Stats
+  const [readingStats, setReadingStats] = useState(null);
+
+  useEffect(() => {
+    if (!user || !['student', 'teacher'].includes(user.role)) return;
+    const fetchStats = async () => {
+      try {
+        const history = await apiGet('/borrows/history');
+        const returned = history.filter(b => b.status === 'returned');
+        const totalRead = returned.length;
+        const totalFines = returned.reduce((sum, b) => sum + (b.fine_amount || 0), 0);
+
+        // Favorite category — requires join data; use category_name if available
+        const catCount = {};
+        for (const b of history) {
+          const cat = b.category_name || b.books?.category_name;
+          if (cat) catCount[cat] = (catCount[cat] || 0) + 1;
+        }
+        const favoriteGenre = Object.keys(catCount).length > 0
+          ? Object.keys(catCount).reduce((a, b) => catCount[a] > catCount[b] ? a : b)
+          : 'N/A';
+
+        setReadingStats({ totalRead, totalFines, favoriteGenre });
+      } catch {
+        // Silent fail — stats are optional
+      }
+    };
+    fetchStats();
+  }, [user]);
 
   if (!user) return null;
 
@@ -238,6 +269,33 @@ const Profile = () => {
           )}
         </div>
       </div>
+
+      {/* Feature 6: Reading Stats — only for students/teachers */}
+      {readingStats && ['student', 'teacher'].includes(user.role) && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3 mb-5">
+            <TrendingUp size={18} className="text-primary-500" />
+            My Reading Statistics
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 rounded-xl text-center border border-indigo-100 dark:border-indigo-900/30">
+              <BookOpen size={24} className="mx-auto text-indigo-500 mb-2" />
+              <p className="text-2xl font-black text-slate-800 dark:text-white">{readingStats.totalRead}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">Books Completed</p>
+            </div>
+            <div className="p-4 bg-purple-50 dark:bg-purple-950/20 rounded-xl text-center border border-purple-100 dark:border-purple-900/30">
+              <Layers size={24} className="mx-auto text-purple-500 mb-2" />
+              <p className="text-lg font-black text-slate-800 dark:text-white leading-tight line-clamp-1">{readingStats.favoriteGenre}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">Favorite Genre</p>
+            </div>
+            <div className="p-4 bg-rose-50 dark:bg-rose-950/20 rounded-xl text-center border border-rose-100 dark:border-rose-900/30">
+              <DollarSign size={24} className="mx-auto text-rose-500 mb-2" />
+              <p className="text-2xl font-black text-slate-800 dark:text-white">${readingStats.totalFines.toFixed(2)}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">Total Fines Paid</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

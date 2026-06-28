@@ -227,7 +227,11 @@ router.post('/', authenticateJWT, requireRole(['librarian', 'admin']), upload.si
       return res.status(400).json({ message: 'ISBN already exists' });
     }
 
-    const coverPath = req.file ? `/uploads/covers/${req.file.filename}` : '/uploads/covers/placeholder.jpg';
+    const coverPath = req.file 
+      ? `/uploads/covers/${req.file.filename}` 
+      : (req.body.cover_image && (req.body.cover_image.startsWith('http://') || req.body.cover_image.startsWith('https://'))
+        ? req.body.cover_image
+        : '/uploads/covers/placeholder.jpg');
 
     const { id } = await dbRun(`
       INSERT INTO books (title, isbn, category_id, author_id, publication_year, description, cover_image, total_copies, available_copies, location)
@@ -281,6 +285,8 @@ router.put('/:id', authenticateJWT, requireRole(['librarian', 'admin']), upload.
         const oldPath = path.join(__dirname, '..', book.cover_image);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
+    } else if (req.body.cover_image && (req.body.cover_image.startsWith('http://') || req.body.cover_image.startsWith('https://'))) {
+      coverPath = req.body.cover_image;
     }
 
     // Adjust availability based on total_copies difference

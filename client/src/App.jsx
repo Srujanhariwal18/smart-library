@@ -19,15 +19,19 @@ import Profile     from './pages/Profile.jsx';
 import StudentHistory      from './pages/student/History.jsx';
 import StudentWishlist     from './pages/student/Wishlist.jsx';
 import StudentReservations from './pages/student/Reservations.jsx';
+import StudentLibraryCard  from './pages/student/LibraryCard.jsx';
+import StudentExamPapers   from './pages/student/ExamPapers.jsx';
 
 import LibrarianBooks        from './pages/librarian/Books.jsx';
 import LibrarianIssue        from './pages/librarian/Issue.jsx';
 import LibrarianReservations from './pages/librarian/Reservations.jsx';
+import LibrarianExamPapers   from './pages/librarian/ExamPaperUpload.jsx';
 
-import AdminDashboard from './pages/admin/Dashboard.jsx';
-import AdminUsers     from './pages/admin/Users.jsx';
-import AdminReports   from './pages/admin/Reports.jsx';
-import AdminLogs      from './pages/admin/Logs.jsx';
+import AdminDashboard     from './pages/admin/Dashboard.jsx';
+import AdminUsers         from './pages/admin/Users.jsx';
+import AdminReports       from './pages/admin/Reports.jsx';
+import AdminLogs          from './pages/admin/Logs.jsx';
+import AdminAnnouncements from './pages/admin/Announcements.jsx';
 
 // ─── Guards ────────────────────────────────────────────────────────────────
 const RoleGuard = ({ allowedRoles, children }) => {
@@ -97,6 +101,12 @@ function App() {
                   <Route path="reservations" element={
                     <RoleGuard allowedRoles={['student','teacher']}><StudentReservations /></RoleGuard>
                   } />
+                  <Route path="student/library-card" element={
+                    <RoleGuard allowedRoles={['student','teacher']}><StudentLibraryCard /></RoleGuard>
+                  } />
+                  <Route path="student/papers" element={
+                    <RoleGuard allowedRoles={['student','teacher']}><StudentExamPapers /></RoleGuard>
+                  } />
 
                   {/* Librarian */}
                   <Route path="librarian/books" element={
@@ -107,6 +117,9 @@ function App() {
                   } />
                   <Route path="librarian/reservations" element={
                     <RoleGuard allowedRoles={['librarian']}><LibrarianReservations /></RoleGuard>
+                  } />
+                  <Route path="librarian/exam-papers" element={
+                    <RoleGuard allowedRoles={['librarian']}><LibrarianExamPapers /></RoleGuard>
                   } />
 
                   {/* Admin */}
@@ -121,6 +134,9 @@ function App() {
                   } />
                   <Route path="admin/logs" element={
                     <RoleGuard allowedRoles={['admin']}><AdminLogs /></RoleGuard>
+                  } />
+                  <Route path="admin/announcements" element={
+                    <RoleGuard allowedRoles={['admin']}><AdminAnnouncements /></RoleGuard>
                   } />
                 </Route>
 

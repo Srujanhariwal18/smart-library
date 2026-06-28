@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { Activity, ShieldAlert, Search } from 'lucide-react';
+import { Activity, ShieldAlert, Search, Download, FileText } from 'lucide-react';
+import Papa from 'papaparse';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const AdminLogs = () => {
   const [logs, setLogs] = useState([]);
@@ -34,18 +37,83 @@ const AdminLogs = () => {
     );
   });
 
+  const handleExportCSV = () => {
+    if (filteredLogs.length === 0) { addToast('No logs to export', 'warning'); return; }
+    const csv = Papa.unparse(filteredLogs.map(log => ({
+      'User Name': log.user_name || 'System Auto',
+      'User Email': log.user_email || '',
+      'Role': log.user_role || 'Guest',
+      'Action': log.action,
+      'Details': log.details || '',
+      'Timestamp': new Date(log.timestamp).toLocaleString(),
+    })));
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `library-activity-logs-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addToast('Logs CSV exported successfully!', 'success');
+  };
+
+  const handleExportPDF = () => {
+    if (filteredLogs.length === 0) { addToast('No logs to export', 'warning'); return; }
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(16);
+    doc.text('Smart Library — Full System Activity Logs', 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+
+    autoTable(doc, {
+      startY: 34,
+      head: [['User Account', 'Role', 'Action', 'Description', 'Timestamp']],
+      body: filteredLogs.map(log => [
+        `${log.user_name || 'System Auto'} (${log.user_email || ''})`,
+        log.user_role || 'Guest',
+        log.action,
+        log.details || '',
+        new Date(log.timestamp).toLocaleString(),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [99, 102, 241] }
+    });
+
+    doc.save(`library-activity-logs-${new Date().toISOString().split('T')[0]}.pdf`);
+    addToast('Logs PDF exported successfully!', 'success');
+  };
+
   return (
     <div className="space-y-6">
       
       {/* Title */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
-          <Activity className="text-primary-500" />
-          Full System Activity Logs
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Audit database modifications, check user logins, and track actions taken by students and librarians.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
+            <Activity className="text-primary-500" />
+            Full System Activity Logs
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Audit database modifications, check user logins, and track actions taken by students and librarians.
+          </p>
+        </div>
+        {/* Export Buttons — Feature 8 */}
+        <div className="flex gap-2 self-start">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900/40 transition"
+          >
+            <FileText size={14} />
+            Export CSV
+          </button>
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 dark:text-rose-400 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 border border-rose-200 dark:border-rose-900/40 transition"
+          >
+            <Download size={14} />
+            Export PDF
+          </button>
+        </div>
       </div>
 
       {/* Search filter */}

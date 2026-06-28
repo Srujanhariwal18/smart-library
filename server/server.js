@@ -16,6 +16,8 @@ import reservationsRouter from './routes/reservations.js';
 import reviewsRouter from './routes/reviews.js';
 import notificationsRouter from './routes/notifications.js';
 import adminRouter from './routes/admin.js';
+import exampapersRouter from './routes/exampapers.js';
+import announcementsRouter from './routes/announcements.js';
 
 // Import cron scheduler
 import { initCronScheduler } from './cron/reminders.js';
@@ -51,6 +53,8 @@ app.use('/api/reservations', reservationsRouter);
 app.use('/api', reviewsRouter); // mounts /wishlist and /books/:id/review
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/exam-papers', exampapersRouter);
+app.use('/api/announcements', announcementsRouter);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

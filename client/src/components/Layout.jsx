@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import Sidebar from './Sidebar.jsx';
 import Navbar from './Navbar.jsx';
+import AnnouncementBanner from './AnnouncementBanner.jsx';
 
 const Layout = () => {
   const { isAuthenticated, loading, pendingRolePick } = useAuth();
@@ -38,6 +39,7 @@ const Layout = () => {
         
         {/* Content Outlet */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8 animate-slide-in">
+          <AnnouncementBanner />
           <Outlet />
         </main>
       </div>

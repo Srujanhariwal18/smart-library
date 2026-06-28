@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet } from '../../utils/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import AdvancedCharts from '../../components/admin/AdvancedCharts.jsx';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { 
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, 
@@ -28,6 +29,7 @@ const AdminDashboard = () => {
   });
   const [recentLogs, setRecentLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState(null);
   const { addToast } = useToast();
 
   const fetchDashboardData = async () => {
@@ -36,6 +38,14 @@ const AdminDashboard = () => {
       setStats(data.stats);
       setCharts(data.charts);
       setRecentLogs(data.recentLogs);
+
+      // Fetch advanced analytics separately — non-blocking
+      try {
+        const analyticsData = await apiGet('/admin/analytics');
+        setAnalytics(analyticsData);
+      } catch {
+        // Advanced analytics are optional — don't block the page
+      }
     } catch (err) {
       addToast(err.message || 'Failed to load dashboard data', 'error');
     } finally {
@@ -286,6 +296,9 @@ const AdminDashboard = () => {
           )}
         </div>
       </div>
+
+      {/* Advanced Analytics Section (Feature 10) */}
+      {analytics && <AdvancedCharts analytics={analytics} />}
     </div>
   );
 };

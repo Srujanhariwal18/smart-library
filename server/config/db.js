@@ -27,6 +27,48 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
         console.log('Database users table migrated with clerk_id successfully.');
       }
     });
+    // Add preferences column if it doesn't exist
+    db.run('ALTER TABLE users ADD COLUMN preferences TEXT;', (err) => {
+      if (err) {
+        if (!err.message.includes('duplicate column name') && !err.message.includes('already exists')) {
+          console.error('Failed to migrate users table for preferences:', err.message);
+        }
+      } else {
+        console.log('Database users table migrated with preferences successfully.');
+      }
+    });
+    // Create new tables if they don't exist (migrations)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS exam_papers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        year INTEGER NOT NULL,
+        file_url TEXT NOT NULL,
+        uploaded_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `, (err) => {
+      if (err) console.error('Failed to migrate/create exam_papers table:', err.message);
+      else console.log('SQLite exam_papers table verified/created.');
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT NOT NULL,
+        target_role TEXT NOT NULL CHECK(target_role IN ('student', 'teacher', 'librarian', 'admin', 'all')),
+        expires_at DATETIME,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `, (err) => {
+      if (err) console.error('Failed to migrate/create announcements table:', err.message);
+      else console.log('SQLite announcements table verified/created.');
+    });
   }
 });
 
