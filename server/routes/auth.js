@@ -9,8 +9,8 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretlibrarykey123!';
 
 // ─── Role Whitelist ─────────────────────────────────────────────────────────
-const ADMIN_LIBRARIAN_EMAIL = 'srujanhariwal464@gmail.com';
-const TEACHER_EMAIL = 'srujanhariwal18@gmail.com';
+const ADMIN_LIBRARIAN_EMAIL = 'your_admin_email@gmail.com';
+const TEACHER_EMAIL = 'your_teacher_email@gmail.com';
 
 const resolveRoleForEmail = (email, requestedRole = null) => {
   const lower = (email || '').toLowerCase();
@@ -126,7 +126,7 @@ router.post('/clerk-sync', async (req, res) => {
 
 /**
  * POST /api/auth/clerk-role-pick
- * Called after srujanhariwal464@gmail.com picks Admin or Librarian.
+ * Called after your_admin_email@gmail.com picks Admin or Librarian.
  * Body: { clerkId, email, name, role: 'admin'|'librarian' }
  */
 router.post('/clerk-role-pick', async (req, res) => {
@@ -203,11 +203,11 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
 
     // Determine target role based on email whitelist:
-    // srujanhariwal464@gmail.com → admin or librarian (picked by user)
-    // srujanhariwal18@gmail.com  → teacher
+    // your_admin_email@gmail.com → admin or librarian (picked by user)
+    // your_teacher_email@gmail.com  → teacher
     // everyone else              → student or teacher (self-selected)
-    const ADMIN_LIBRARIAN_EMAIL = 'srujanhariwal464@gmail.com';
-    const TEACHER_EMAIL = 'srujanhariwal18@gmail.com';
+    const ADMIN_LIBRARIAN_EMAIL = 'your_admin_email@gmail.com';
+    const TEACHER_EMAIL = 'your_teacher_email@gmail.com';
     const lowerEmail = email.toLowerCase();
 
     let targetRole = 'student';

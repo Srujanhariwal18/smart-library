@@ -36,8 +36,8 @@ The application enforces fine-grained permissions and custom portals tailored to
 
 ### 🔐 Clerk SSO Whitelist & Role Picker Modal
 When running in **Live Cloud Mode** with Clerk enabled, the system uses email whitelists for secure, automated role assignments during SSO sync:
-- **`srujanhariwal464@gmail.com`**: Automatically flagged as administrative/library staff. Upon first login, they are greeted by a beautiful **Role Picker Modal** allowing them to select whether to enter the workspace as an **Admin** or a **Librarian** (saved permanently to the user account).
-- **`srujanhariwal18@gmail.com`**: Automatically whitelisted and assigned the **Teacher** role.
+- **`your_admin_email@gmail.com`**: Automatically flagged as administrative/library staff. Upon first login, they are greeted by a beautiful **Role Picker Modal** allowing them to select whether to enter the workspace as an **Admin** or a **Librarian** (saved permanently to the user account).
+- **`your_teacher_email@gmail.com`**: Automatically whitelisted and assigned the **Teacher** role.
 - **All other emails**: Default to **Student** status, with the option to transition their role to **Teacher** via the profile settings page.
 
 ---

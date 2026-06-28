@@ -68,7 +68,7 @@ function App() {
       <AuthProvider>
         <ToastProvider>
           <NotificationProvider>
-            {/* Role picker overlay — shown to srujanhariwal464@gmail.com */}
+            {/* Role picker overlay — shown to your_admin_email@gmail.com */}
             <RolePickerModal />
 
             <Router>

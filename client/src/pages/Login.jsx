@@ -56,7 +56,7 @@ const Login = () => {
     {
       icon: Shield,
       label: 'Admin / Librarian',
-      email: 'srujanhariwal464@gmail.com',
+      email: 'your_admin_email@gmail.com',
       note: 'You\'ll pick your role after sign-in',
       color: 'amber',
       iconBg: 'bg-amber-500/20',
@@ -67,7 +67,7 @@ const Login = () => {
     {
       icon: GraduationCap,
       label: 'Teacher',
-      email: 'srujanhariwal18@gmail.com',
+      email: 'your_teacher_email@gmail.com',
       note: 'Automatically assigned Teacher role',
       color: 'purple',
       iconBg: 'bg-purple-500/20',

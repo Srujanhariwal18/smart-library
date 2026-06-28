@@ -1361,15 +1361,15 @@ export const apiUpload = async (endpoint, formData, method = 'POST') => {
   }
 };
 
-const ADMIN_LIBRARIAN_EMAIL = 'srujanhariwal464@gmail.com';
-const TEACHER_EMAIL = 'srujanhariwal18@gmail.com';
+const ADMIN_LIBRARIAN_EMAILS = ['your_admin_email@gmail.com'];
+const TEACHER_EMAILS = ['your_teacher_email@gmail.com'];
 
 const resolveRoleForEmail = (email, requestedRole = null) => {
   const lower = (email || '').toLowerCase();
-  if (lower === ADMIN_LIBRARIAN_EMAIL) {
+  if (ADMIN_LIBRARIAN_EMAILS.includes(lower)) {
     return ['admin', 'librarian'].includes(requestedRole) ? requestedRole : 'admin';
   }
-  if (lower === TEACHER_EMAIL) return 'teacher';
+  if (TEACHER_EMAILS.includes(lower)) return 'teacher';
   return requestedRole === 'teacher' ? 'teacher' : 'student';
 };
 
@@ -1433,7 +1433,7 @@ export const apiClerkSync = async (clerkId, email, name, requestedRole = null, s
 
     // 3. New user path
     if (!user) {
-      const isAdminLibrarianEmail = lowerEmail === ADMIN_LIBRARIAN_EMAIL;
+      const isAdminLibrarianEmail = ADMIN_LIBRARIAN_EMAILS.includes(lowerEmail);
 
       if (isAdminLibrarianEmail && !['admin', 'librarian'].includes(requestedRole)) {
         return { needsRolePick: true };
@@ -1494,7 +1494,7 @@ export const apiRolePick = async (clerkId, email, name, role, supabaseAccessToke
 
   try {
     const lowerEmail = email.toLowerCase();
-    if (lowerEmail !== ADMIN_LIBRARIAN_EMAIL) {
+    if (!ADMIN_LIBRARIAN_EMAILS.includes(lowerEmail)) {
       throw new Error('Role picking is not allowed for this email');
     }
 
